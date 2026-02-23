@@ -140,119 +140,132 @@ onUnmounted(() => {
     
     <div class="home-container">
       <div class="home-header">
-        <div class="logo-icon-large">
-          <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-            <rect width="100" height="100" rx="24" fill="var(--accent)"/>
-            <path d="M25 62C25 62 38 38 50 38C62 38 75 62 75 62" stroke="white" stroke-width="5" stroke-linecap="round"/>
-            <circle cx="38" cy="50" r="5" fill="white"/>
-            <circle cx="62" cy="50" r="5" fill="white"/>
-            <path d="M44 68C44 68 50 75 56 68" stroke="white" stroke-width="4" stroke-linecap="round"/>
-          </svg>
+        <Transition name="logo-bounce" appear>
+          <div class="logo-icon-large">
+            <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+              <rect width="100" height="100" rx="24" fill="var(--accent)"/>
+              <path d="M25 62C25 62 38 38 50 38C62 38 75 62 75 62" stroke="white" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="38" cy="50" r="5" fill="white"/>
+              <circle cx="62" cy="50" r="5" fill="white"/>
+              <path d="M44 68C44 68 50 75 56 68" stroke="white" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </Transition>
+        <Transition name="fade-up" :delay="100" appear>
+          <h1 class="home-title">你画我猜</h1>
+        </Transition>
+        <Transition name="fade-up" :delay="200" appear>
+          <p class="home-subtitle">多人在线绘画猜词游戏</p>
+        </Transition>
+      </div>
+
+      <Transition name="fade-up" :delay="300" appear>
+        <div class="name-input-section">
+          <label class="input-label">
+            <Users :size="18" />
+            您的昵称
+          </label>
+          <Input 
+            v-model="playerName" 
+            placeholder="请输入昵称" 
+            :disabled="loading"
+            @focus="error = ''"
+          />
         </div>
-        <h1 class="home-title">你画我猜</h1>
-        <p class="home-subtitle">多人在线绘画猜词游戏</p>
-      </div>
+      </Transition>
 
-      <div class="name-input-section">
-        <label class="input-label">
-          <Users :size="18" />
-          您的昵称
-        </label>
-        <Input 
-          v-model="playerName" 
-          placeholder="请输入昵称" 
-          :disabled="loading"
-          @focus="error = ''"
-        />
-      </div>
+      <Transition name="error-appear">
+        <p v-if="error" class="form-error">{{ error }}</p>
+      </Transition>
 
-      <p v-if="error" class="form-error">{{ error }}</p>
-
-      <Transition name="slide-fade" mode="out-in">
-        <div v-if="mode === 'home'" class="main-actions" key="home">
-          <Transition name="cards">
-            <div class="action-cards" :class="{ 'with-rooms': roomList.length > 0 }" v-show="true">
-              <div class="action-card create-card" @click="goToCreate">
-                <div class="card-icon">
-                  <Plus :size="32" />
-                </div>
-                <div class="card-content">
-                  <h3>创建房间</h3>
-                  <p>创建新房间并成为房主</p>
-                </div>
-              </div>
-
-              <div class="action-card join-card" @click="goToJoin">
-                <div class="card-icon">
-                  <LogIn :size="32" />
-                </div>
-                <div class="card-content">
-                  <h3>加入房间</h3>
-                  <p>输入房间号加入游戏</p>
-                </div>
-              </div>
+      <div v-if="mode === 'home'" class="main-actions">
+        <div class="action-cards" :class="{ 'with-rooms': roomList.length > 0 }">
+          <div class="action-card create-card" @click="goToCreate">
+            <div class="card-icon">
+              <Plus :size="32" />
             </div>
-          </Transition>
+            <div class="card-content">
+              <h3>创建房间</h3>
+              <p>创建新房间并成为房主</p>
+            </div>
+          </div>
 
-          <Transition name="fade-slide">
-            <div v-if="roomList.length > 0" class="room-list-container" key="rooms">
-              <h3 class="room-list-title">可用房间</h3>
-              <TransitionGroup name="list" tag="div" class="room-list">
-                <div 
-                  v-for="room in roomList" 
-                  :key="room.room_code" 
-                  class="room-item"
-                  @click="handleJoinByRoom(room)"
-                >
-                  <div class="room-left">
-                    <div class="room-code-display">
-                      <span 
-                        v-for="(digit, index) in room.room_code.split('')" 
-                        :key="index" 
-                        class="digit"
-                      >{{ digit }}</span>
-                    </div>
-                    <div class="room-host">
-                      <User :size="12" class="host-icon" />
-                      {{ room.host_name }}
-                    </div>
+          <div class="action-card join-card" @click="goToJoin">
+            <div class="card-icon">
+              <LogIn :size="32" />
+            </div>
+            <div class="card-content">
+              <h3>加入房间</h3>
+              <p>输入房间号加入游戏</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="room-list-wrapper">
+          <div class="room-list-container" :class="{ visible: roomList.length > 0 }">
+            <h3 class="room-list-title">可用房间</h3>
+            <TransitionGroup name="list" tag="div" class="room-list">
+              <div 
+                v-for="room in roomList" 
+                :key="room.room_code" 
+                class="room-item"
+                @click="handleJoinByRoom(room)"
+              >
+                <div class="room-left">
+                  <div class="room-code-display">
+                    <span 
+                      v-for="(digit, index) in room.room_code.split('')" 
+                      :key="index" 
+                      class="digit"
+                    >{{ digit }}</span>
                   </div>
-                  <div class="room-right">
-                    <div class="player-count">
-                      <span class="count-num">{{ room.player_count }}</span>
-                      <span class="count-divider">/</span>
-                      <span class="count-max">{{ room.max_players }}</span>
-                    </div>
-                    <span class="room-status" :class="room.status">
+                  <div class="room-host">
+                    <User :size="12" class="host-icon" />
+                    {{ room.host_name }}
+                  </div>
+                </div>
+                <div class="room-right">
+                  <div class="player-count">
+                    <span class="count-num">{{ room.player_count }}</span>
+                    <span class="count-divider">/</span>
+                    <span class="count-max">{{ room.max_players }}</span>
+                  </div>
+                  <Transition name="status-change" mode="out-in">
+                    <span class="room-status" :class="room.status" :key="room.status">
                       {{ room.status === 'playing' ? '进行中' : '等待中' }}
                     </span>
-                  </div>
+                  </Transition>
                 </div>
-              </TransitionGroup>
+              </div>
+            </TransitionGroup>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="home-form">
+          <Transition name="form-slide" appear>
+            <div v-if="mode === 'create'" class="form-group">
+              <label class="form-label">猜题目标</label>
+              <Input 
+                v-model="targetWord" 
+                placeholder="请输入本轮猜题目标（如：小猫）" 
+                :disabled="loading"
+              />
+              <p class="form-hint">其他人需要猜测这个词</p>
             </div>
           </Transition>
-        </div>
 
-        <div v-else class="home-form" key="form">
-          <div v-if="mode === 'create'" class="form-group">
-            <label class="form-label">猜题目标</label>
-            <Input 
-              v-model="targetWord" 
-              placeholder="请输入本轮猜题目标（如：小猫）" 
-              :disabled="loading"
-            />
-            <p class="form-hint">其他人需要猜测这个词</p>
-          </div>
-
-          <div v-if="mode === 'join'" class="form-group">
-            <label class="form-label">房间号</label>
-            <Input 
-              v-model="roomCode" 
-              placeholder="请输入6位房间号" 
-              maxlength="6"
-              :disabled="loading"
-            />
-          </div>
+          <Transition name="form-slide" appear>
+            <div v-if="mode === 'join'" class="form-group">
+              <label class="form-label">房间号</label>
+              <Input 
+                v-model="roomCode" 
+                placeholder="请输入6位房间号" 
+                maxlength="6"
+                :disabled="loading"
+              />
+            </div>
+          </Transition>
 
           <div class="form-actions">
             <Button variant="default" size="medium" @click="mode = 'home'" :disabled="loading">
@@ -278,7 +291,6 @@ onUnmounted(() => {
             </Button>
           </div>
         </div>
-      </Transition>
     </div>
   </div>
 </template>
@@ -370,6 +382,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin-top: 16px;
 }
 
 .action-cards {
@@ -439,10 +452,26 @@ export default {
   color: var(--text-tertiary);
 }
 
+.room-list-wrapper {
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
 .room-list-container {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: all 0.4s ease;
+  transform: translateY(-10px);
+}
+
+.room-list-container.visible {
+  max-height: 400px;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .room-list-title {
@@ -613,10 +642,95 @@ export default {
   display: flex;
   gap: 12px;
   margin-top: 24px;
+  transition: all 0.3s ease;
 }
 
 .form-actions button {
   flex: 1;
+}
+
+/* 初始加载动画 */
+.logo-bounce-enter-active {
+  animation: logoBounce 0.6s ease-out;
+}
+
+@keyframes logoBounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.fade-up-enter-active {
+  transition: all 0.5s ease-out;
+}
+
+.fade-up-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* 错误提示动画 */
+.error-appear-enter-active {
+  animation: errorShake 0.4s ease;
+}
+
+.error-appear-leave-active {
+  transition: all 0.2s ease;
+}
+
+.error-appear-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.error-shake-enter-active {
+  animation: errorShake 0.4s ease;
+}
+
+.error-shake-leave-active {
+  transition: all 0.2s ease;
+}
+
+.error-shake-leave-to {
+  opacity: 0;
+}
+
+@keyframes errorShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* 表单动画 */
+.form-slide-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.form-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+/* 状态变化动画 */
+.status-change-enter-active,
+.status-change-leave-active {
+  transition: all 0.2s ease;
+}
+
+.status-change-enter-from,
+.status-change-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
 }
 
 .slide-fade-enter-active,
@@ -648,12 +762,6 @@ export default {
 .fade-slide-enter-active,
 .fade-slide-leave-active {
   transition: all 0.3s ease;
-}
-
-.fade-slide-enter-from,
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 .list-enter-active,
