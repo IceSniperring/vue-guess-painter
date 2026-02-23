@@ -1,16 +1,18 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, inject } from 'vue';
 import Button from '@/components/common/Button.vue';
 import Modal from '@/components/common/Modal.vue';
 import Toast from '@/components/common/Toast.vue';
 import { useSocket } from '@/composables/useSocket';
 import { useGame } from '@/composables/useGame';
-import { Play, Square, Vote, LogOut, Target } from 'lucide-vue-next';
+import { Play, Square, Vote, LogOut, Target, Moon, Sun } from 'lucide-vue-next';
 import DrawingCanvas from '@/components/game/DrawingCanvas.vue';
 import DrawingToolbar from '@/components/game/DrawingToolbar.vue';
 import PlayerList from '@/components/game/PlayerList.vue';
 import GuessInput from '@/components/game/GuessInput.vue';
 import VotePanel from '@/components/game/VotePanel.vue';
+
+const { isDark, toggleTheme } = inject('theme');
 
 const props = defineProps({
   socketUrl: {
@@ -282,24 +284,38 @@ defineExpose({ init });
   <div class="game-view">
     <header class="game-header">
       <div class="header-left">
-        <div class="room-code-badge">{{ roomCode }}</div>
-        <div class="header-info">
-          <span class="info-label">房主</span>
-          <span class="info-value">{{ hostName }}</span>
+        <div class="room-code-display">
+          <span 
+            v-for="(digit, index) in roomCode" 
+            :key="index" 
+            class="digit"
+          >{{ digit }}</span>
         </div>
-        <div class="header-info">
-          <span class="info-label">人数</span>
-          <span class="info-value">{{ playerCount }}/{{ maxPlayers }}</span>
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">房主</span>
+            <span class="stat-value">{{ hostName }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">人数</span>
+            <span class="stat-value">{{ playerCount }}/{{ maxPlayers }}</span>
+          </div>
         </div>
       </div>
       <div class="header-right">
         <span class="status-badge" :class="gameStatus">
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
         </span>
-        <Button variant="danger" size="small" @click="leaveRoom">
-          <LogOut :size="16" />
-          退出
-        </Button>
+        <div class="header-actions">
+          <Button variant="default" size="small" @click="toggleTheme">
+            <Moon v-if="isDark" :size="16" />
+            <Sun v-else :size="16" />
+          </Button>
+          <Button variant="danger" size="small" @click="leaveRoom">
+            <LogOut :size="16" />
+            退出
+          </Button>
+        </div>
       </div>
     </header>
 
@@ -405,42 +421,62 @@ defineExpose({ init });
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: var(--bg-primary);
+  padding: 16px 24px;
+  background: var(--bg-card);
   border-bottom: 1px solid var(--separator);
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
 }
 
-.room-code-badge {
-  background: linear-gradient(135deg, var(--accent), #5856d6);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 12px;
-  font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 3px;
+.room-code-display {
+  display: flex;
+  gap: 4px;
 }
 
-.header-info {
+.room-code-display .digit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 30px;
+  padding: 0 4px;
+  background: linear-gradient(180deg, #3A3A3C 0%, #1C1C1E 100%);
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #FFFFFF;
+  font-family: 'Courier New', Courier, monospace;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.header-stats {
+  display: flex;
+  gap: 20px;
+}
+
+.stat-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.info-label {
+.stat-label {
   font-size: 11px;
   color: var(--text-tertiary);
 }
 
-.info-value {
+.stat-value {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
@@ -449,12 +485,17 @@ defineExpose({ init });
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .status-badge {
-  padding: 6px 14px;
-  border-radius: 16px;
+  padding: 8px 16px;
+  border-radius: 20px;
   font-size: 13px;
   font-weight: 600;
 }

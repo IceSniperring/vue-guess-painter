@@ -1,11 +1,12 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, inject } from 'vue';
 import Button from '@/components/common/Button.vue';
 import Input from '@/components/common/Input.vue';
 import { useSocket } from '@/composables/useSocket';
-import { Users, Plus, LogIn, RefreshCw, User } from 'lucide-vue-next';
+import { Users, Plus, LogIn, User, Moon, Sun } from 'lucide-vue-next';
 
 const { socket, connect, on, off } = useSocket();
+const { isDark, toggleTheme } = inject('theme');
 
 const mode = ref('home');
 const roomCode = ref('');
@@ -136,6 +137,11 @@ onUnmounted(() => {
 
 <template>
   <div class="home-view">
+    <div class="theme-toggle" @click="toggleTheme">
+      <Moon v-if="!isDark" :size="20" />
+      <Sun v-else :size="20" />
+    </div>
+
     <div class="home-bg-pattern"></div>
     
     <div class="home-container">
@@ -298,7 +304,7 @@ onUnmounted(() => {
 <script>
 import { Users, Plus, LogIn, RefreshCw, User } from 'lucide-vue-next';
 export default {
-  components: { Users, Plus, LogIn, RefreshCw, User }
+  components: { Users, Plus, LogIn, User, Moon, Sun }
 }
 </script>
 
@@ -311,6 +317,29 @@ export default {
   padding: 24px;
   position: relative;
   overflow: visible;
+}
+
+.theme-toggle {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-tertiary);
+  transform: scale(1.1);
 }
 
 .home-bg-pattern {

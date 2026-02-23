@@ -1,10 +1,17 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, provide } from 'vue';
 import HomeView from '@/views/HomeView.vue';
 import GameView from '@/views/GameView.vue';
 
 const currentView = ref('home');
 const gameRef = ref(null);
+const isDark = ref(false);
+
+provide('theme', { isDark, toggleTheme: () => {
+  isDark.value = !isDark.value;
+  document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light');
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
+}});
 
 const handleCreateRoom = (data) => {
   currentView.value = 'game';
@@ -25,10 +32,13 @@ const handleLeave = () => {
 };
 
 onMounted(() => {
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  if (prefersDark) {
-    document.documentElement.setAttribute('data-theme', 'dark');
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme) {
+    isDark.value = savedTheme === 'dark';
+  } else {
+    isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
+  document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light');
 });
 </script>
 
