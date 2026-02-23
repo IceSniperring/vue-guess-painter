@@ -11,6 +11,7 @@
   --accent-red: #FF3B30;
   --accent-orange: #FF9500;
   --accent-yellow: #FFCC00;
+  --border-color: rgba(60, 60, 67, 0.12);
   --separator: rgba(60, 60, 67, 0.12);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   --modal-blur: blur(20px);
@@ -29,6 +30,7 @@
   --text-primary: #FFFFFF;
   --text-secondary: rgba(255, 255, 255, 0.6);
   --text-tertiary: rgba(255, 255, 255, 0.3);
+  --border-color: rgba(255, 255, 255, 0.12);
   --separator: rgba(255, 255, 255, 0.12);
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
@@ -51,6 +53,7 @@ body {
 
 #app {
   min-height: 100vh;
+  overflow: visible;
 }
 
 button {

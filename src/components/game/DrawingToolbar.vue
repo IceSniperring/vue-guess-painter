@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 
 const props = defineProps({
   isHost: Boolean,
@@ -14,13 +14,40 @@ const emit = defineEmits(['update:drawingColor', 'update:drawingWidth', 'update:
 
 const presetColors = ['#000000', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55'];
 
+const customColor = ref('#000000');
+const customWidth = ref(4);
+const showCustomColor = ref(false);
+const showCustomSize = ref(false);
+
+const isCustomColorActive = computed(() => {
+  return !presetColors.includes(props.drawingColor);
+});
+
+const isCustomSizeActive = computed(() => {
+  const standardSizes = [2, 4, 6, 8, 10];
+  return !standardSizes.includes(props.drawingWidth);
+});
+
 const handleColorClick = (color) => {
+  emit('update:drawingColor', color);
+  emit('update:isEraser', false);
+};
+
+const handleCustomColorChange = (e) => {
+  const color = e.target.value;
+  customColor.value = color;
   emit('update:drawingColor', color);
   emit('update:isEraser', false);
 };
 
 const handleSizeClick = (size) => {
   emit('update:drawingWidth', size * 2);
+};
+
+const handleCustomWidthChange = (e) => {
+  const width = parseInt(e.target.value) || 4;
+  customWidth.value = width;
+  emit('update:drawingWidth', width);
 };
 
 const handleToolClick = (tool) => {
@@ -53,6 +80,31 @@ const handleClear = () => {
           :style="{ background: color }"
           @click="handleColorClick(color)"
         ></button>
+        <div class="custom-color-wrapper">
+          <button
+            class="color-btn custom-color-btn"
+            :class="{ active: isCustomColorActive && !isEraser }"
+            :style="{ background: customColor }"
+            @click="showCustomColor = !showCustomColor"
+          >
+            <span class="custom-icon">+</span>
+          </button>
+          <div v-if="showCustomColor" class="custom-popup">
+            <input
+              type="color"
+              :value="isCustomColorActive ? drawingColor : customColor"
+              @input="handleCustomColorChange"
+              class="color-picker"
+            />
+            <input
+              type="text"
+              :value="isCustomColorActive ? drawingColor : customColor"
+              @change="handleCustomColorChange"
+              class="color-input"
+              placeholder="#000000"
+            />
+          </div>
+        </div>
       </div>
     </div>
 
@@ -68,6 +120,26 @@ const handleClear = () => {
         >
           <span class="size-indicator" :style="{ transform: `scale(${0.4 + size * 0.15})` }"></span>
         </button>
+        <div class="custom-size-wrapper">
+          <button
+            class="size-btn custom-size-btn"
+            :class="{ active: isCustomSizeActive }"
+            @click="showCustomSize = !showCustomSize"
+          >
+            <span class="size-custom-text">{{ drawingWidth }}</span>
+          </button>
+          <div v-if="showCustomSize" class="custom-popup custom-size-popup">
+            <input
+              type="range"
+              min="1"
+              max="30"
+              :value="isCustomSizeActive ? drawingWidth : customWidth"
+              @input="handleCustomWidthChange"
+              class="size-slider"
+            />
+            <span class="size-value">{{ isCustomSizeActive ? drawingWidth : customWidth }}px</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -157,6 +229,59 @@ export default {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
+.custom-color-wrapper {
+  position: relative;
+}
+
+.custom-color-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.custom-color-btn .custom-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.custom-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.color-picker {
+  width: 120px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.color-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
 .size-options {
   display: flex;
   gap: 4px;
@@ -192,6 +317,45 @@ export default {
 
 .size-btn.active .size-indicator {
   background: white;
+}
+
+.custom-size-wrapper {
+  position: relative;
+}
+
+.custom-size-btn .size-custom-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.custom-size-popup {
+  min-width: 140px;
+  align-items: center;
+}
+
+.size-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  appearance: none;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+}
+
+.size-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.size-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .tool-options {

@@ -7,6 +7,26 @@ export function setupSocket(io) {
   io.on('connection', (socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);
 
+    socket.on('get-room-list', async () => {
+      try {
+        const roomList = [];
+        for (const [roomCode, roomData] of rooms) {
+          if (roomData.status === 'waiting' || roomData.status === 'playing') {
+            roomList.push({
+              room_code: roomCode,
+              host_name: roomData.host_name || '未知',
+              max_players: roomData.max_players || 8,
+              status: roomData.status,
+              player_count: roomData.players?.length || 0
+            });
+          }
+        }
+        socket.emit('room-list', { rooms: roomList });
+      } catch (error) {
+        socket.emit('room-error', { message: error.message });
+      }
+    });
+
     socket.on('create-room', async (data) => {
       try {
         const { targetWord, hostName } = data;

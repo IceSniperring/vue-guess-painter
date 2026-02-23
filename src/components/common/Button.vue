@@ -68,6 +68,12 @@ defineProps({
   color: white;
 }
 
+.ios-button--secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
 .ios-button--small {
   padding: 8px 16px;
   font-size: 14px;

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 const props = defineProps({
   isHost: Boolean,
@@ -18,8 +18,30 @@ const ctx = ref(null);
 const isDrawing = ref(false);
 const lastPos = ref({ x: 0, y: 0 });
 const canvasReady = ref(false);
+const isHovering = ref(false);
+const cursorPos = ref({ x: 0, y: 0 });
 
 const emit = defineEmits(['draw-sync']);
+
+const cursorStyle = computed(() => {
+  if (!props.isHost || props.gameStatus !== 'playing') return {};
+  
+  if (props.isEraser) {
+    return {};
+  }
+  
+  const size = props.drawingWidth;
+  return {
+    width: `${size}px`,
+    height: `${size}px`,
+    backgroundColor: props.drawingColor,
+    border: '1px solid rgba(0, 0, 0, 0.3)'
+  };
+});
+
+const showCustomCursor = computed(() => {
+  return props.isHost && props.gameStatus === 'playing' && isHovering.value && !props.isEraser;
+});
 
 const initCanvas = () => {
   if (!canvasRef.value) return;
@@ -90,40 +112,52 @@ const startDrawing = (e) => {
   };
 };
 
-const draw = (e) => {
-  if (!isDrawing.value || !ctx.value || !lastPos.value) return;
-  
+const handleMouseMove = (e) => {
   const canvas = canvasRef.value;
   const rect = canvas.getBoundingClientRect();
-  const size = getCanvasSize();
-  
-  const currentPos = {
-    x: (e.clientX - rect.left) * (size.width / rect.width),
-    y: (e.clientY - rect.top) * (size.height / rect.height)
+  cursorPos.value = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
   };
-
-  const color = props.isEraser ? '#FFFFFF' : props.drawingColor;
-  const width = props.isEraser ? props.drawingWidth * 3 : props.drawingWidth;
-
-  ctx.value.strokeStyle = color;
-  ctx.value.lineWidth = width;
-  ctx.value.beginPath();
-  ctx.value.moveTo(lastPos.value.x, lastPos.value.y);
-  ctx.value.lineTo(currentPos.x, currentPos.y);
-  ctx.value.stroke();
-
-  const drawData = {
-    type: 'segment',
-    from: { ...lastPos.value },
-    to: currentPos,
-    color: color,
-    width: width,
-    isEraser: props.isEraser
-  };
-
-  props.socketEmit('draw', { roomCode: props.roomCode, drawData });
   
-  lastPos.value = currentPos;
+  if (isDrawing.value && ctx.value && lastPos.value) {
+    const size = getCanvasSize();
+    const currentPos = {
+      x: (e.clientX - rect.left) * (size.width / rect.width),
+      y: (e.clientY - rect.top) * (size.height / rect.height)
+    };
+
+    const color = props.isEraser ? '#FFFFFF' : props.drawingColor;
+    const width = props.isEraser ? props.drawingWidth * 3 : props.drawingWidth;
+
+    ctx.value.strokeStyle = color;
+    ctx.value.lineWidth = width;
+    ctx.value.beginPath();
+    ctx.value.moveTo(lastPos.value.x, lastPos.value.y);
+    ctx.value.lineTo(currentPos.x, currentPos.y);
+    ctx.value.stroke();
+
+    const drawData = {
+      type: 'segment',
+      from: { ...lastPos.value },
+      to: currentPos,
+      color: color,
+      width: width,
+      isEraser: props.isEraser
+    };
+
+    props.socketEmit('draw', { roomCode: props.roomCode, drawData });
+    
+    lastPos.value = currentPos;
+  }
+};
+
+const handleMouseEnter = () => {
+  isHovering.value = true;
+};
+
+const handleMouseLeave = () => {
+  isHovering.value = false;
 };
 
 const stopDrawing = () => {
@@ -200,12 +234,25 @@ defineExpose({ initCanvas, redrawAll, handleDrawSync, replayDrawHistory, clearCa
     </div>
     <canvas
       ref="canvasRef"
-      :class="{ 'cursor-eraser': isEraser && isHost && gameStatus === 'playing' }"
+      :class="{ 
+        'cursor-host': isHost && gameStatus === 'playing',
+        'cursor-eraser': isEraser && isHost && gameStatus === 'playing'
+      }"
       @mousedown="startDrawing"
-      @mousemove="draw"
+      @mousemove="handleMouseMove"
       @mouseup="stopDrawing"
-      @mouseleave="stopDrawing"
+      @mouseleave="handleMouseLeave; stopDrawing()"
+      @mouseenter="handleMouseEnter"
     ></canvas>
+    <div
+      v-if="showCustomCursor"
+      class="custom-cursor"
+      :style="{
+        ...cursorStyle,
+        left: cursorPos.x + 'px',
+        top: cursorPos.y + 'px'
+      }"
+    ></div>
   </div>
 </template>
 
@@ -229,11 +276,23 @@ export default {
   width: 100%;
   height: auto;
   display: block;
-  cursor: crosshair;
+}
+
+.canvas-wrapper canvas.cursor-host {
+  cursor: none;
 }
 
 .canvas-wrapper canvas.cursor-eraser {
   cursor: cell;
+}
+
+.custom-cursor {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  transition: width 0.1s, height 0.1s, background-color 0.1s;
 }
 
 .canvas-label {

@@ -64,6 +64,18 @@ export const RoomService = {
     return players[0] || null;
   },
 
+  async getAllActiveRooms() {
+    const [rooms] = await pool.query(
+      `SELECT r.*, COUNT(DISTINCT p.socket_id) as player_count 
+       FROM rooms r 
+       LEFT JOIN players p ON r.id = p.room_id AND p.is_online = TRUE 
+       WHERE r.status IN ('waiting', 'playing')
+       GROUP BY r.id
+       ORDER BY r.created_at DESC`
+    );
+    return rooms;
+  },
+
   async addPlayer(roomId, socketId, playerName) {
     const room = await this.getRoomById(roomId);
     if (!room) throw new Error('Room not found');

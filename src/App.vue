@@ -52,5 +52,6 @@ onMounted(() => {
 
 .app {
   min-height: 100vh;
+  overflow: visible;
 }
 </style>
