@@ -1,11 +1,15 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import Button from '@/components/common/Button.vue';
 import Input from '@/components/common/Input.vue';
 import Modal from '@/components/common/Modal.vue';
 import Toast from '@/components/common/Toast.vue';
 import { useSocket } from '@/composables/useSocket';
 import { useGame } from '@/composables/useGame';
+import { 
+  Pencil, Eraser, Undo2, Trash2, Play, Square, Vote, Users, 
+  HelpCircle, Target, Timer, Crown, LogOut, Palette
+} from 'lucide-vue-next';
 
 const props = defineProps({
   socketUrl: {
@@ -50,17 +54,44 @@ const drawingWidth = ref(3);
 const isEraser = ref(false);
 const strokes = ref([]);
 const currentStroke = ref([]);
+const canvasReady = ref(false);
 
 const voteCountdown = ref(30);
 let voteTimer = null;
 
 const initCanvas = () => {
   if (!canvasRef.value) return;
-  ctx.value = canvasRef.value.getContext('2d');
+  
+  const canvas = canvasRef.value;
+  const container = canvas.parentElement;
+  const containerWidth = container.clientWidth;
+  const containerHeight = Math.min(500, containerWidth * 0.625);
+  
+  const dpr = window.devicePixelRatio || 1;
+  
+  canvas.width = containerWidth * dpr;
+  canvas.height = containerHeight * dpr;
+  canvas.style.width = containerWidth + 'px';
+  canvas.style.height = containerHeight + 'px';
+  
+  ctx.value = canvas.getContext('2d');
+  ctx.value.scale(dpr, dpr);
   ctx.value.lineCap = 'round';
   ctx.value.lineJoin = 'round';
   ctx.value.fillStyle = '#FFFFFF';
-  ctx.value.fillRect(0, 0, 800, 600);
+  ctx.value.fillRect(0, 0, containerWidth, containerHeight);
+  
+  canvasReady.value = true;
+  console.log('[Canvas] Initialized:', containerWidth, 'x', containerHeight, 'DPR:', dpr);
+};
+
+const getCanvasSize = () => {
+  if (!canvasRef.value) return { width: 800, height: 500 };
+  const canvas = canvasRef.value;
+  return {
+    width: parseInt(canvas.style.width) || canvas.width,
+    height: parseInt(canvas.style.height) || canvas.height
+  };
 };
 
 const startDrawing = (e) => {
@@ -71,24 +102,26 @@ const startDrawing = (e) => {
   isDrawing.value = true;
   currentStroke.value = [];
   
-  const rect = canvasRef.value.getBoundingClientRect();
-  const scaleX = canvasRef.value.width / rect.width;
-  const scaleY = canvasRef.value.height / rect.height;
+  const canvas = canvasRef.value;
+  const rect = canvas.getBoundingClientRect();
+  const size = getCanvasSize();
+  
   lastPos.value = {
-    x: (e.clientX - rect.left) * scaleX,
-    y: (e.clientY - rect.top) * scaleY
+    x: (e.clientX - rect.left) * (size.width / rect.width),
+    y: (e.clientY - rect.top) * (size.height / rect.height)
   };
 };
 
 const draw = (e) => {
   if (!isDrawing.value || !ctx.value || !lastPos.value) return;
   
-  const rect = canvasRef.value.getBoundingClientRect();
-  const scaleX = canvasRef.value.width / rect.width;
-  const scaleY = canvasRef.value.height / rect.height;
+  const canvas = canvasRef.value;
+  const rect = canvas.getBoundingClientRect();
+  const size = getCanvasSize();
+  
   const currentPos = {
-    x: (e.clientX - rect.left) * scaleX,
-    y: (e.clientY - rect.top) * scaleY
+    x: (e.clientX - rect.left) * (size.width / rect.width),
+    y: (e.clientY - rect.top) * (size.height / rect.height)
   };
 
   const color = isEraser.value ? '#FFFFFF' : drawingColor.value;
@@ -128,8 +161,9 @@ const stopDrawing = () => {
 
 const redrawAll = () => {
   if (!ctx.value) return;
+  const size = getCanvasSize();
   ctx.value.fillStyle = '#FFFFFF';
-  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  ctx.value.fillRect(0, 0, size.width, size.height);
   
   for (const stroke of strokes.value) {
     for (const segment of stroke) {
@@ -156,8 +190,9 @@ const undo = () => {
 const clearCanvas = () => {
   strokes.value = [];
   currentStroke.value = [];
+  const size = getCanvasSize();
   ctx.value.fillStyle = '#FFFFFF';
-  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  ctx.value.fillRect(0, 0, size.width, size.height);
   
   const drawData = { type: 'clear' };
   socketEmit('draw', { roomCode: roomCode.value, drawData });
@@ -169,6 +204,7 @@ const toggleEraser = () => {
 
 const handleDrawSync = (data) => {
   const drawData = data.drawData;
+  const size = getCanvasSize();
   
   if (drawData.type === 'segment') {
     ctx.value.strokeStyle = drawData.color;
@@ -181,7 +217,7 @@ const handleDrawSync = (data) => {
     strokes.value = [];
     currentStroke.value = [];
     ctx.value.fillStyle = '#FFFFFF';
-    ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+    ctx.value.fillRect(0, 0, size.width, size.height);
   } else if (drawData.type === 'undo') {
     if (strokes.value.length > drawData.strokeCount) {
       strokes.value.pop();
@@ -205,8 +241,9 @@ const replayDrawHistory = (historyData) => {
   
   strokes.value = historyData;
   
+  const size = getCanvasSize();
   ctx.value.fillStyle = '#FFFFFF';
-  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  ctx.value.fillRect(0, 0, size.width, size.height);
   
   for (const stroke of historyData) {
     for (const segment of stroke) {
@@ -361,9 +398,10 @@ const setupSocketListeners = () => {
     setTargetWord(data.targetWord);
     strokes.value = [];
     currentStroke.value = [];
-    if (ctx.value) {
+    if (ctx.value && canvasRef.value) {
+      const size = getCanvasSize();
       ctx.value.fillStyle = '#FFFFFF';
-      ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+      ctx.value.fillRect(0, 0, size.width, size.height);
     }
     console.log('[Game] gameStatus after update:', gameStatus.value);
     showNotification('游戏开始！', 'success');
@@ -442,18 +480,22 @@ onUnmounted(() => {
         <span class="status-badge" :class="gameStatus">
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
         </span>
-        <Button variant="danger" size="small" @click="leaveRoom">退出</Button>
+        <Button variant="danger" size="small" @click="leaveRoom">
+          <LogOut :size="16" />
+          退出
+        </Button>
       </div>
     </header>
 
     <main class="game-content">
       <section class="canvas-section">
-        <div class="canvas-wrapper">
-          <div v-if="isHost" class="canvas-label">🎨 绘画区</div>
+        <div class="canvas-wrapper" ref="canvasWrapper">
+          <div v-if="isHost" class="canvas-label">
+            <Palette :size="16" />
+            绘画区
+          </div>
           <canvas
             ref="canvasRef"
-            width="800"
-            height="500"
             :class="{ 'cursor-eraser': isEraser && isHost && gameStatus === 'playing' }"
             @mousedown="startDrawing"
             @mousemove="draw"
@@ -476,7 +518,7 @@ onUnmounted(() => {
               ></button>
               <label class="color-btn custom">
                 <input type="color" v-model="drawingColor" @input="isEraser = false" />
-                <span class="custom-color-icon">✛</span>
+                <span class="custom-color-icon">+</span>
               </label>
             </div>
           </div>
@@ -500,10 +542,12 @@ onUnmounted(() => {
             <span class="tool-label">工具</span>
             <div class="tool-options">
               <button class="tool-btn" :class="{ active: !isEraser }" @click="isEraser = false">
-                ✏️ 画笔
+                <Pencil :size="18" />
+                画笔
               </button>
               <button class="tool-btn" :class="{ active: isEraser }" @click="isEraser = true">
-                🧹 橡皮
+                <Eraser :size="18" />
+                橡皮
               </button>
             </div>
           </div>
@@ -512,10 +556,12 @@ onUnmounted(() => {
             <span class="tool-label">操作</span>
             <div class="action-options">
               <button class="action-btn" @click="undo" :disabled="strokes.length === 0">
-                ↩️ 撤销
+                <Undo2 :size="18" />
+                撤销
               </button>
               <button class="action-btn danger" @click="clearCanvas">
-                🗑️ 清空
+                <Trash2 :size="18" />
+                清空
               </button>
             </div>
           </div>
@@ -523,31 +569,40 @@ onUnmounted(() => {
 
         <div v-if="isHost" class="game-controls">
           <Button v-if="gameStatus === 'waiting'" variant="success" @click="startGame">
-            ▶️ 开始游戏
+            <Play :size="18" />
+            开始游戏
           </Button>
           <Button v-if="gameStatus === 'playing'" variant="warning" @click="endGame">
-            ⏹️ 结束游戏
+            <Square :size="18" />
+            结束游戏
           </Button>
           <Button v-if="gameStatus === 'waiting' && players.length > 1" variant="primary" @click="startVote">
-            📊 发起投票
+            <Vote :size="18" />
+            发起投票
           </Button>
         </div>
       </section>
 
       <aside class="sidebar">
         <div class="card players-card">
-          <h3 class="card-title">👥 玩家列表</h3>
+          <h3 class="card-title">
+            <Users :size="18" />
+            玩家列表
+          </h3>
           <ul class="players-list">
             <li v-for="player in players" :key="player.socket_id" class="player-item">
               <div class="player-avatar">{{ player.player_name.charAt(0).toUpperCase() }}</div>
               <span class="player-name">{{ player.player_name }}</span>
-              <span v-if="player.is_host" class="host-badge">👑</span>
+              <Crown v-if="player.is_host" :size="18" class="host-badge" />
             </li>
           </ul>
         </div>
 
         <div v-if="!isHost && gameStatus === 'playing'" class="card guess-card">
-          <h3 class="card-title">❓ 提交答案</h3>
+          <h3 class="card-title">
+            <HelpCircle :size="18" />
+            提交答案
+          </h3>
           <div class="guess-form">
             <Input v-model="answer" placeholder="输入你的答案..." @keyup.enter="submitAnswer" />
             <Button variant="primary" @click="submitAnswer" :disabled="!answer.trim()">提交</Button>
@@ -556,15 +611,24 @@ onUnmounted(() => {
         </div>
 
         <div v-if="isHost && gameStatus === 'playing'" class="card target-card">
-          <h3 class="card-title">🎯 猜题目标</h3>
+          <h3 class="card-title">
+            <Target :size="18" />
+            猜题目标
+          </h3>
           <p class="target-word">{{ targetWord }}</p>
         </div>
 
         <div v-if="gameStatus === 'voting'" class="card vote-card">
-          <h3 class="card-title">🗳️ 投票选新房主</h3>
+          <h3 class="card-title">
+            <Vote :size="18" />
+            投票选新房主
+          </h3>
           <div class="vote-timer">
             <div class="timer-bar" :style="{ width: (voteCountdown / 30 * 100) + '%' }"></div>
-            <span class="timer-text">{{ voteCountdown }}秒</span>
+            <span class="timer-text">
+              <Timer :size="14" />
+              {{ voteCountdown }}秒
+            </span>
           </div>
           <div class="vote-candidates">
             <button
@@ -581,7 +645,7 @@ onUnmounted(() => {
       </aside>
     </main>
 
-    <Modal :show="showCorrectModal" title="🎉 恭喜！" @close="showCorrectModal = false">
+    <Modal :show="showCorrectModal" title="恭喜！" @close="showCorrectModal = false">
       <div class="modal-result">
         <p class="result-text">{{ correctPlayerName }} 猜对了！</p>
         <p class="result-target">答案是：<strong>{{ targetWord }}</strong></p>
@@ -590,7 +654,7 @@ onUnmounted(() => {
 
     <Modal :show="showVoteResultModal" title="投票结果" @close="showVoteResultModal = false">
       <div class="modal-result">
-        <p v-if="newHost" class="result-text">🎊 {{ newHost.player_name }} 当选新房主！</p>
+        <p v-if="newHost" class="result-text">{{ newHost.player_name }} 当选新房主！</p>
         <p v-else class="result-text">无有效投票，房主身份不变</p>
         <p class="result-hint">即将进入新一轮游戏...</p>
       </div>
@@ -721,6 +785,9 @@ onUnmounted(() => {
   position: absolute;
   top: 12px;
   left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 14px;
   background: rgba(0, 0, 0, 0.6);
   color: white;
@@ -843,6 +910,10 @@ onUnmounted(() => {
 }
 
 .tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 14px;
   background: var(--bg-secondary);
   border: none;
@@ -852,6 +923,7 @@ onUnmounted(() => {
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .tool-btn:hover {
@@ -869,6 +941,10 @@ onUnmounted(() => {
 }
 
 .action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 14px;
   background: var(--bg-secondary);
   border: none;
@@ -878,6 +954,7 @@ onUnmounted(() => {
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -915,6 +992,9 @@ onUnmounted(() => {
 }
 
 .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
@@ -956,7 +1036,7 @@ onUnmounted(() => {
 }
 
 .host-badge {
-  font-size: 14px;
+  color: #FFD700;
 }
 
 .guess-form {
@@ -1007,6 +1087,9 @@ onUnmounted(() => {
   position: absolute;
   right: 0;
   top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--accent-orange);
