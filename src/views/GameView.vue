@@ -47,8 +47,9 @@ const lastPos = ref({ x: 0, y: 0 });
 
 const drawingColor = ref('#000000');
 const drawingWidth = ref(3);
-const history = ref([]);
-const historyIndex = ref(-1);
+const isEraser = ref(false);
+const strokes = ref([]);
+const currentStroke = ref([]);
 
 const voteCountdown = ref(30);
 let voteTimer = null;
@@ -63,12 +64,13 @@ const initCanvas = () => {
 };
 
 const startDrawing = (e) => {
-  console.log('[Draw] startDrawing called, isHost:', isHost.value, 'gameStatus:', gameStatus.value);
   if (!isHost.value || gameStatus.value !== 'playing') {
     isDrawing.value = false;
     return;
   }
   isDrawing.value = true;
+  currentStroke.value = [];
+  
   const rect = canvasRef.value.getBoundingClientRect();
   const scaleX = canvasRef.value.width / rect.width;
   const scaleY = canvasRef.value.height / rect.height;
@@ -89,61 +91,86 @@ const draw = (e) => {
     y: (e.clientY - rect.top) * scaleY
   };
 
-  ctx.value.strokeStyle = drawingColor.value;
-  ctx.value.lineWidth = drawingWidth.value;
+  const color = isEraser.value ? '#FFFFFF' : drawingColor.value;
+  const width = isEraser.value ? drawingWidth.value * 3 : drawingWidth.value;
+
+  ctx.value.strokeStyle = color;
+  ctx.value.lineWidth = width;
   ctx.value.beginPath();
   ctx.value.moveTo(lastPos.value.x, lastPos.value.y);
   ctx.value.lineTo(currentPos.x, currentPos.y);
   ctx.value.stroke();
 
   const drawData = {
-    type: 'draw',
+    type: 'segment',
     from: { ...lastPos.value },
     to: currentPos,
-    color: drawingColor.value,
-    width: drawingWidth.value
+    color: color,
+    width: width,
+    isEraser: isEraser.value
   };
 
+  currentStroke.value.push(drawData);
   socketEmit('draw', { roomCode: roomCode.value, drawData });
   
   lastPos.value = currentPos;
 };
 
 const stopDrawing = () => {
-  if (isDrawing.value) {
-    isDrawing.value = false;
-    saveHistory();
+  if (isDrawing.value && currentStroke.value.length > 0) {
+    const stroke = [...currentStroke.value];
+    strokes.value.push(stroke);
+    socketEmit('draw', { roomCode: roomCode.value, drawData: { type: 'stroke-end', stroke } });
+    currentStroke.value = [];
   }
+  isDrawing.value = false;
 };
 
-const saveHistory = () => {
-  const imageData = ctx.value.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
-  history.value = history.value.slice(0, historyIndex.value + 1);
-  history.value.push(imageData);
-  historyIndex.value = history.value.length - 1;
+const redrawAll = () => {
+  if (!ctx.value) return;
+  ctx.value.fillStyle = '#FFFFFF';
+  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  
+  for (const stroke of strokes.value) {
+    for (const segment of stroke) {
+      ctx.value.strokeStyle = segment.color;
+      ctx.value.lineWidth = segment.width;
+      ctx.value.beginPath();
+      ctx.value.moveTo(segment.from.x, segment.from.y);
+      ctx.value.lineTo(segment.to.x, segment.to.y);
+      ctx.value.stroke();
+    }
+  }
 };
 
 const undo = () => {
-  if (historyIndex.value > 0) {
-    historyIndex.value--;
-    ctx.value.putImageData(history.value[historyIndex.value], 0, 0);
-    const drawData = { type: 'undo' };
-    socketEmit('draw', { roomCode: roomCode.value, drawData });
-  }
+  if (strokes.value.length === 0) return;
+  
+  strokes.value.pop();
+  redrawAll();
+  
+  const drawData = { type: 'undo', strokeCount: strokes.value.length };
+  socketEmit('draw', { roomCode: roomCode.value, drawData });
 };
 
 const clearCanvas = () => {
+  strokes.value = [];
+  currentStroke.value = [];
   ctx.value.fillStyle = '#FFFFFF';
   ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
-  saveHistory();
+  
   const drawData = { type: 'clear' };
   socketEmit('draw', { roomCode: roomCode.value, drawData });
+};
+
+const toggleEraser = () => {
+  isEraser.value = !isEraser.value;
 };
 
 const handleDrawSync = (data) => {
   const drawData = data.drawData;
   
-  if (drawData.type === 'draw') {
+  if (drawData.type === 'segment') {
     ctx.value.strokeStyle = drawData.color;
     ctx.value.lineWidth = drawData.width;
     ctx.value.beginPath();
@@ -151,9 +178,48 @@ const handleDrawSync = (data) => {
     ctx.value.lineTo(drawData.to.x, drawData.to.y);
     ctx.value.stroke();
   } else if (drawData.type === 'clear') {
+    strokes.value = [];
+    currentStroke.value = [];
     ctx.value.fillStyle = '#FFFFFF';
     ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  } else if (drawData.type === 'undo') {
+    if (strokes.value.length > drawData.strokeCount) {
+      strokes.value.pop();
+    }
+    redrawAll();
+  } else if (drawData.type === 'stroke-end') {
+    if (drawData.stroke && drawData.stroke.length > 0) {
+      strokes.value.push(drawData.stroke);
+    }
   }
+};
+
+const replayDrawHistory = (historyData) => {
+  console.log('[Draw] replayDrawHistory called, ctx:', !!ctx.value, 'strokes length:', historyData?.length);
+  if (!ctx.value) {
+    console.log('[Draw] ctx not ready, waiting...');
+    setTimeout(() => replayDrawHistory(historyData), 100);
+    return;
+  }
+  if (!historyData || historyData.length === 0) return;
+  
+  strokes.value = historyData;
+  
+  ctx.value.fillStyle = '#FFFFFF';
+  ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+  
+  for (const stroke of historyData) {
+    for (const segment of stroke) {
+      ctx.value.strokeStyle = segment.color;
+      ctx.value.lineWidth = segment.width;
+      ctx.value.beginPath();
+      ctx.value.moveTo(segment.from.x, segment.from.y);
+      ctx.value.lineTo(segment.to.x, segment.to.y);
+      ctx.value.stroke();
+    }
+  }
+  
+  console.log('[Draw] replayDrawHistory completed, strokes length:', strokes.value.length);
 };
 
 const submitAnswer = () => {
@@ -253,9 +319,14 @@ const setupSocketListeners = () => {
   });
 
   socketOn('room-joined', (data) => {
+    console.log('[Socket] room-joined received, drawHistory:', data.drawHistory?.length);
     setRoom(data.room);
     setPlayers(data.players);
     setIsHost(data.isHost);
+    
+    if (data.drawHistory && data.drawHistory.length > 0) {
+      replayDrawHistory(data.drawHistory);
+    }
   });
 
   socketOn('player-joined', (data) => {
@@ -288,9 +359,12 @@ const setupSocketListeners = () => {
     console.log('[Game] game-started received:', data);
     updateGameStatus('playing');
     setTargetWord(data.targetWord);
-    clearCanvas();
-    history.value = [];
-    historyIndex.value = -1;
+    strokes.value = [];
+    currentStroke.value = [];
+    if (ctx.value) {
+      ctx.value.fillStyle = '#FFFFFF';
+      ctx.value.fillRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+    }
     console.log('[Game] gameStatus after update:', gameStatus.value);
     showNotification('游戏开始！', 'success');
   });
@@ -352,141 +426,177 @@ onUnmounted(() => {
 
 <template>
   <div class="game-view">
-    <div class="game-header">
-      <div class="header-info">
-        <span class="info-item">房间号：{{ roomCode }}</span>
-        <span class="info-item">房主：{{ hostName }}</span>
-        <span class="info-item">人数：{{ playerCount }}/{{ maxPlayers }}</span>
-        <span class="info-item status" :class="gameStatus">
-          {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '进行中' : '投票中' }}
-        </span>
+    <header class="game-header">
+      <div class="header-left">
+        <div class="room-code-badge">{{ roomCode }}</div>
+        <div class="header-info">
+          <span class="info-label">房主</span>
+          <span class="info-value">{{ hostName }}</span>
+        </div>
+        <div class="header-info">
+          <span class="info-label">人数</span>
+          <span class="info-value">{{ playerCount }}/{{ maxPlayers }}</span>
+        </div>
       </div>
-      <Button variant="danger" size="small" @click="leaveRoom">退出</Button>
-    </div>
+      <div class="header-right">
+        <span class="status-badge" :class="gameStatus">
+          {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
+        </span>
+        <Button variant="danger" size="small" @click="leaveRoom">退出</Button>
+      </div>
+    </header>
 
-    <div class="game-content">
-      <div class="game-main">
-        <div class="canvas-container" :class="{ 'is-host': isHost }">
-          <div v-if="isHost" class="canvas-label">房主专属绘画区</div>
+    <main class="game-content">
+      <section class="canvas-section">
+        <div class="canvas-wrapper">
+          <div v-if="isHost" class="canvas-label">🎨 绘画区</div>
           <canvas
             ref="canvasRef"
             width="800"
-            height="600"
+            height="500"
+            :class="{ 'cursor-eraser': isEraser && isHost && gameStatus === 'playing' }"
             @mousedown="startDrawing"
             @mousemove="draw"
             @mouseup="stopDrawing"
             @mouseleave="stopDrawing"
           ></canvas>
-          
-          <div v-if="isHost && gameStatus === 'playing'" class="canvas-tools">
-            <div class="tool-group">
-              <input type="color" v-model="drawingColor" title="颜色" />
-              <select v-model="drawingWidth" title="粗细">
-                <option :value="2">细</option>
-                <option :value="3">中</option>
-                <option :value="5">粗</option>
-                <option :value="8">特粗</option>
-              </select>
+        </div>
+
+        <div v-if="isHost && gameStatus === 'playing'" class="toolbar-external">
+          <div class="tool-group">
+            <span class="tool-label">颜色</span>
+            <div class="color-options">
+              <button
+                v-for="color in ['#000000', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55']"
+                :key="color"
+                class="color-btn"
+                :class="{ active: drawingColor === color && !isEraser }"
+                :style="{ background: color }"
+                @click="drawingColor = color; isEraser = false"
+              ></button>
+              <label class="color-btn custom">
+                <input type="color" v-model="drawingColor" @input="isEraser = false" />
+                <span class="custom-color-icon">✛</span>
+              </label>
             </div>
-            <div class="tool-group">
-              <Button size="small" @click="undo">撤销</Button>
-              <Button size="small" variant="danger" @click="clearCanvas">清空</Button>
+          </div>
+
+          <div class="tool-group">
+            <span class="tool-label">粗细</span>
+            <div class="size-options">
+              <button
+                v-for="size in 5"
+                :key="size"
+                class="size-btn"
+                :class="{ active: drawingWidth === size * 2 }"
+                @click="drawingWidth = size * 2"
+              >
+                <span class="size-indicator" :style="{ transform: `scale(${0.4 + size * 0.15})` }"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="tool-group">
+            <span class="tool-label">工具</span>
+            <div class="tool-options">
+              <button class="tool-btn" :class="{ active: !isEraser }" @click="isEraser = false">
+                ✏️ 画笔
+              </button>
+              <button class="tool-btn" :class="{ active: isEraser }" @click="isEraser = true">
+                🧹 橡皮
+              </button>
+            </div>
+          </div>
+
+          <div class="tool-group">
+            <span class="tool-label">操作</span>
+            <div class="action-options">
+              <button class="action-btn" @click="undo" :disabled="strokes.length === 0">
+                ↩️ 撤销
+              </button>
+              <button class="action-btn danger" @click="clearCanvas">
+                🗑️ 清空
+              </button>
             </div>
           </div>
         </div>
 
         <div v-if="isHost" class="game-controls">
-          <Button 
-            v-if="gameStatus === 'waiting'" 
-            variant="success" 
-            @click="startGame"
-          >
-            开始游戏
+          <Button v-if="gameStatus === 'waiting'" variant="success" @click="startGame">
+            ▶️ 开始游戏
           </Button>
-          <Button 
-            v-if="gameStatus === 'playing'" 
-            variant="warning" 
-            @click="endGame"
-          >
-            结束游戏
+          <Button v-if="gameStatus === 'playing'" variant="warning" @click="endGame">
+            ⏹️ 结束游戏
           </Button>
-          <Button 
-            v-if="gameStatus === 'waiting' && players.length > 1" 
-            variant="primary" 
-            @click="startVote"
-          >
-            发起投票
+          <Button v-if="gameStatus === 'waiting' && players.length > 1" variant="primary" @click="startVote">
+            📊 发起投票
           </Button>
         </div>
-      </div>
+      </section>
 
-      <div class="game-sidebar">
-        <div class="players-list">
-          <h3 class="sidebar-title">玩家列表</h3>
-          <ul>
+      <aside class="sidebar">
+        <div class="card players-card">
+          <h3 class="card-title">👥 玩家列表</h3>
+          <ul class="players-list">
             <li v-for="player in players" :key="player.socket_id" class="player-item">
+              <div class="player-avatar">{{ player.player_name.charAt(0).toUpperCase() }}</div>
               <span class="player-name">{{ player.player_name }}</span>
-              <span v-if="player.is_host" class="player-badge">房主</span>
+              <span v-if="player.is_host" class="host-badge">👑</span>
             </li>
           </ul>
         </div>
 
-        <div v-if="!isHost && gameStatus === 'playing'" class="guess-section">
-          <h3 class="sidebar-title">你的答案</h3>
-          <div class="guess-input">
-            <Input 
-              v-model="answer" 
-              placeholder="输入你的答案"
-              @keyup.enter="submitAnswer"
-            />
-            <Button variant="primary" @click="submitAnswer">提交</Button>
+        <div v-if="!isHost && gameStatus === 'playing'" class="card guess-card">
+          <h3 class="card-title">❓ 提交答案</h3>
+          <div class="guess-form">
+            <Input v-model="answer" placeholder="输入你的答案..." @keyup.enter="submitAnswer" />
+            <Button variant="primary" @click="submitAnswer" :disabled="!answer.trim()">提交</Button>
           </div>
           <p v-if="answerError" class="guess-error">{{ answerError }}</p>
         </div>
 
-        <div v-if="isHost && gameStatus === 'playing'" class="target-section">
-          <h3 class="sidebar-title">猜题目标</h3>
+        <div v-if="isHost && gameStatus === 'playing'" class="card target-card">
+          <h3 class="card-title">🎯 猜题目标</h3>
           <p class="target-word">{{ targetWord }}</p>
         </div>
 
-        <div v-if="gameStatus === 'voting'" class="vote-section">
-          <h3 class="sidebar-title">投票选新房主</h3>
-          <p class="vote-timer">剩余时间：{{ voteCountdown }}秒</p>
-          <div class="vote-buttons">
-            <Button 
-              v-for="candidate in candidates" 
+        <div v-if="gameStatus === 'voting'" class="card vote-card">
+          <h3 class="card-title">🗳️ 投票选新房主</h3>
+          <div class="vote-timer">
+            <div class="timer-bar" :style="{ width: (voteCountdown / 30 * 100) + '%' }"></div>
+            <span class="timer-text">{{ voteCountdown }}秒</span>
+          </div>
+          <div class="vote-candidates">
+            <button
+              v-for="candidate in candidates"
               :key="candidate.socket_id"
-              variant="default"
-              size="small"
+              class="candidate-btn"
               @click="vote(candidate.socket_id)"
             >
-              {{ candidate.player_name }}
-            </Button>
+              <div class="candidate-avatar">{{ candidate.player_name.charAt(0).toUpperCase() }}</div>
+              <span>{{ candidate.player_name }}</span>
+            </button>
           </div>
         </div>
-      </div>
-    </div>
+      </aside>
+    </main>
 
-    <Modal :show="showCorrectModal" title="猜对了！" @close="showCorrectModal = false">
+    <Modal :show="showCorrectModal" title="🎉 恭喜！" @close="showCorrectModal = false">
       <div class="modal-result">
         <p class="result-text">{{ correctPlayerName }} 猜对了！</p>
-        <p class="result-target">正确答案是：{{ targetWord }}</p>
+        <p class="result-target">答案是：<strong>{{ targetWord }}</strong></p>
       </div>
     </Modal>
 
     <Modal :show="showVoteResultModal" title="投票结果" @close="showVoteResultModal = false">
       <div class="modal-result">
-        <p v-if="newHost" class="result-text">{{ newHost.player_name }} 当选新房主！</p>
+        <p v-if="newHost" class="result-text">🎊 {{ newHost.player_name }} 当选新房主！</p>
         <p v-else class="result-text">无有效投票，房主身份不变</p>
         <p class="result-hint">即将进入新一轮游戏...</p>
       </div>
     </Modal>
 
-    <Toast 
-      v-model:show="showToast" 
-      :message="toastMessage" 
-      :type="toastType" 
-    />
+    <Toast v-model:show="showToast" :message="toastMessage" :type="toastType" />
   </div>
 </template>
 
@@ -503,43 +613,71 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: var(--bg-card);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--separator);
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
-.header-info {
+.header-left {
   display: flex;
   align-items: center;
   gap: 16px;
-  flex-wrap: wrap;
 }
 
-.info-item {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.info-item.status {
-  padding: 4px 10px;
+.room-code-badge {
+  background: linear-gradient(135deg, var(--accent), #5856d6);
+  color: white;
+  padding: 8px 16px;
   border-radius: 12px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 3px;
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.info-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.info-item.status.waiting {
+.status-badge.waiting {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
 
-.info-item.status.playing {
-  background: var(--accent-green);
+.status-badge.playing {
+  background: linear-gradient(135deg, #34C759, #30D158);
   color: white;
 }
 
-.info-item.status.voting {
-  background: var(--accent-orange);
+.status-badge.voting {
+  background: linear-gradient(135deg, #FF9500, #FF6B00);
   color: white;
 }
 
@@ -548,57 +686,59 @@ onUnmounted(() => {
   flex: 1;
   padding: 20px;
   gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.game-main {
+.canvas-section {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.canvas-container {
+.canvas-wrapper {
   position: relative;
   background: white;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: var(--card-shadow);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
 }
 
-.canvas-container canvas {
+.canvas-wrapper canvas {
   width: 100%;
   height: auto;
   display: block;
   cursor: crosshair;
-  pointer-events: auto;
-  position: relative;
-  z-index: 5;
+}
+
+.canvas-wrapper canvas.cursor-eraser {
+  cursor: cell;
 }
 
 .canvas-label {
   position: absolute;
   top: 12px;
   left: 12px;
-  padding: 6px 12px;
-  background: var(--accent);
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.6);
   color: white;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  border-radius: var(--radius-sm);
+  border-radius: 20px;
   z-index: 10;
 }
 
-.canvas-tools {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+.toolbar-external {
   display: flex;
+  align-items: center;
   gap: 16px;
-  padding: 8px 16px;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  box-shadow: var(--card-shadow);
+  padding: 14px 20px;
+  background: var(--bg-primary);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  flex-wrap: wrap;
 }
 
 .tool-group {
@@ -607,152 +747,378 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.tool-group input[type="color"] {
-  width: 32px;
-  height: 32px;
-  border: none;
-  cursor: pointer;
-  border-radius: 4px;
+.tool-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  margin-right: 4px;
 }
 
-.tool-group select {
-  padding: 6px 10px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: none;
-  border-radius: 4px;
+.color-options {
+  display: flex;
+  gap: 6px;
+}
+
+.color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.color-btn:hover {
+  transform: scale(1.1);
+}
+
+.color-btn.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+.color-btn.custom {
+  background: linear-gradient(135deg, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #FFEAA7, #DDA0DD);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-btn.custom input {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.custom-color-icon {
+  color: white;
   font-size: 14px;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.size-options {
+  display: flex;
+  gap: 4px;
+}
+
+.size-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.size-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.size-btn.active {
+  background: var(--accent);
+}
+
+.size-indicator {
+  width: 8px;
+  height: 8px;
+  background: var(--text-primary);
+  border-radius: 50%;
+}
+
+.size-btn.active .size-indicator {
+  background: white;
+}
+
+.tool-options {
+  display: flex;
+  gap: 6px;
+}
+
+.tool-btn {
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tool-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.tool-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.action-options {
+  display: flex;
+  gap: 6px;
+}
+
+.action-btn {
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.danger:hover:not(:disabled) {
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--accent-red);
 }
 
 .game-controls {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
 }
 
-.game-sidebar {
+.sidebar {
   width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-.players-list,
-.guess-section,
-.target-section,
-.vote-section {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
+.card {
+  background: var(--bg-primary);
+  border-radius: 14px;
   padding: 16px;
-  box-shadow: var(--card-shadow);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
-.sidebar-title {
-  font-size: 15px;
+.card-title {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 12px;
 }
 
+.players-list {
+  list-style: none;
+}
+
 .player-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 8px 0;
+}
+
+.player-item:not(:last-child) {
   border-bottom: 1px solid var(--separator);
 }
 
-.player-item:last-child {
-  border-bottom: none;
+.player-avatar {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .player-name {
+  flex: 1;
   font-size: 14px;
   color: var(--text-primary);
 }
 
-.player-badge {
-  font-size: 12px;
-  padding: 2px 8px;
-  background: var(--accent);
-  color: white;
-  border-radius: 10px;
+.host-badge {
+  font-size: 14px;
 }
 
-.guess-section {
-  display: flex;
-  flex-direction: column;
-}
-
-.guess-input {
+.guess-form {
   display: flex;
   gap: 8px;
-}
-
-.guess-input input {
-  flex: 1;
 }
 
 .guess-error {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 13px;
   color: var(--accent-red);
   text-align: center;
+  padding: 10px;
+  background: rgba(255, 59, 48, 0.1);
+  border-radius: 10px;
 }
 
 .target-word {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--accent);
   text-align: center;
-}
-
-.vote-section {
-  text-align: center;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(88, 86, 214, 0.08));
+  border-radius: 12px;
 }
 
 .vote-timer {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--accent-orange);
-  margin-bottom: 16px;
+  position: relative;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  margin-bottom: 24px;
+  overflow: visible;
 }
 
-.vote-buttons {
+.timer-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #FF9500, #FF3B30);
+  border-radius: 3px;
+  transition: width 1s linear;
+}
+
+.timer-text {
+  position: absolute;
+  right: 0;
+  top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-orange);
+}
+
+.vote-candidates {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.candidate-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.candidate-btn:hover {
+  background: rgba(0, 122, 255, 0.1);
+  border-color: var(--accent);
+}
+
+.candidate-avatar {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #34C759, #30D158);
+  color: white;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .modal-result {
   text-align: center;
+  padding: 10px 0;
 }
 
 .result-text {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .result-target {
-  font-size: 16px;
-  color: var(--accent);
-  margin-bottom: 16px;
-}
-
-.result-hint {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
-@media (max-width: 900px) {
+.result-target strong {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.result-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-top: 12px;
+}
+
+@media (max-width: 1000px) {
   .game-content {
     flex-direction: column;
   }
   
-  .game-sidebar {
+  .sidebar {
     width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .sidebar .card {
+    flex: 1;
+    min-width: 240px;
+  }
+  
+  .toolbar-external {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .game-header {
+    padding: 10px 12px;
+  }
+  
+  .header-info {
+    display: none;
+  }
+  
+  .game-content {
+    padding: 12px;
+  }
+  
+  .toolbar-external {
+    padding: 12px;
+    gap: 10px;
+  }
+  
+  .tool-label {
+    display: none;
   }
 }
 </style>

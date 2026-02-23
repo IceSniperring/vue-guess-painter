@@ -15,6 +15,9 @@ export function setupSocket(io) {
         socket.join(room.room_code);
         rooms.set(room.room_code, { 
           ...room, 
+          draw_history: [],
+          strokes: [],
+          current_stroke: [],
           players: [{ socket_id: socket.id, player_name: hostName, is_host: true }],
           votes: {},
           voteTimer: null
@@ -52,19 +55,26 @@ export function setupSocket(io) {
         socket.join(roomCode);
         const updatedPlayers = await RoomService.getPlayersByRoomId(room.id);
         
-        const roomData = rooms.get(roomCode) || { 
-          ...room, 
-          players: updatedPlayers, 
-          votes: {},
-          voteTimer: null 
-        };
+        let roomData = rooms.get(roomCode);
+        if (!roomData) {
+          roomData = { 
+            ...room, 
+            draw_history: [],
+            strokes: [],
+            current_stroke: [],
+            players: updatedPlayers, 
+            votes: {},
+            voteTimer: null 
+          };
+          rooms.set(roomCode, roomData);
+        }
         roomData.players = updatedPlayers;
-        rooms.set(roomCode, roomData);
 
         socket.emit('room-joined', {
           room: roomData,
           players: updatedPlayers,
-          isHost: false
+          isHost: false,
+          drawHistory: roomData.strokes || []
         });
 
         io.to(roomCode).emit('player-joined', {
@@ -72,7 +82,7 @@ export function setupSocket(io) {
           count: updatedPlayers.length
         });
 
-        console.log(`[Room] ${playerName} joined ${roomCode}`);
+        console.log(`[Room] ${playerName} joined ${roomCode}, strokes: ${roomData.strokes?.length || 0}`);
       } catch (error) {
         socket.emit('room-error', { message: error.message });
       }
@@ -113,7 +123,31 @@ export function setupSocket(io) {
         if (!roomData) return;
 
         roomData.draw_history = roomData.draw_history || [];
-        roomData.draw_history.push(drawData);
+        roomData.current_stroke = roomData.current_stroke || [];
+
+        if (drawData.type === 'segment') {
+          roomData.current_stroke.push(drawData);
+          roomData.draw_history.push(drawData);
+        } else if (drawData.type === 'stroke-end') {
+          if (roomData.current_stroke.length > 0) {
+            roomData.strokes = roomData.strokes || [];
+            roomData.strokes.push([...roomData.current_stroke]);
+            roomData.current_stroke = [];
+          }
+        } else if (drawData.type === 'clear') {
+          roomData.strokes = [];
+          roomData.current_stroke = [];
+          roomData.draw_history = [];
+        } else if (drawData.type === 'undo') {
+          roomData.strokes = roomData.strokes || [];
+          if (roomData.strokes.length > 0) {
+            roomData.strokes.pop();
+            roomData.draw_history = [];
+            for (const stroke of roomData.strokes) {
+              roomData.draw_history.push(...stroke);
+            }
+          }
+        }
         
         socket.to(roomCode).emit('draw-sync', { drawData });
       } catch (error) {
