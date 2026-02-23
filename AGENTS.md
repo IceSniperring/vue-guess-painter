@@ -1,35 +1,44 @@
 # AGENTS.md - Agent Coding Guidelines for vue-guess-painter
 
 ## Project Overview
-- **Type**: Vue 3 + Vite SPA + Node.js Backend
+- **Type**: Vue 3 + Vite SPA with Node.js/Express + Socket.io Backend
 - **Frontend Node**: ^20.19.0 || >=22.12.0
 - **Backend Node**: ^18.0.0 || >=20.0.0
 - **Package Manager**: npm
+- **Module System**: ES Modules (`"type": "module"`)
 
 ## Project Structure
 ```
 vue-guess-painter/
-├── server/              # Backend (Express + Socket.io)
-│   ├── config/         # Database config
-│   ├── services/       # Business logic
-│   ├── socket/         # Socket.io handlers
-│   ├── index.js        # Entry point
+├── src/                    # Frontend (Vue 3 + Vite)
+│   ├── assets/styles/      # Global CSS
+│   ├── components/common/  # Reusable components (Button, Input, Modal, Toast)
+│   ├── composables/        # Vue composables (useSocket, useGame)
+│   ├── views/              # Page components (HomeView, GameView)
+│   ├── App.vue
+│   └── main.js
+├── server/                 # Backend (Express + Socket.io)
+│   ├── config/database.js  # MySQL connection pool
+│   ├── services/           # Business logic (RoomService)
+│   ├── socket/index.js     # Socket.io event handlers
+│   ├── index.js            # Server entry point
+│   ├── database.sql        # Schema definitions
 │   └── package.json
-└── src/                # Frontend (Vue 3)
+└── vite.config.js          # Vite config with @ alias
 ```
 
 ## Database
 - **Host**: 192.168.31.200:3306
-- **Database**: guess-painter
-- **Credentials**: guess-painter / p5BZRbB8REs4AxRR
+- **Database**: guess_painter (note: underscore, not hyphen)
+- **Tables**: rooms, players, votes, game_records
 
-Run `server/database.sql` to create tables.
+Initialize: `mysql -u root -p < server/database.sql`
 
 ## Build / Run Commands
 
 ### Frontend
 ```bash
-npm run dev      # Start dev server with hot reload
+npm run dev      # Start Vite dev server with hot reload
 npm run build    # Build for production
 npm run preview  # Preview production build
 ```
@@ -38,167 +47,194 @@ npm run preview  # Preview production build
 ```bash
 cd server
 npm install
-npm start        # Start server on port 3001
+npm start        # Start server (port 3001)
+npm run dev      # Start with --watch flag
 ```
 
 ### Testing
-**Currently not configured.** If adding tests, use:
+Not configured. To add tests:
 ```bash
 npm install -D vitest @vue/test-utils jsdom
 ```
 
-Run single test file:
+Run single test:
 ```bash
-npx vitest run src/components/__tests__/MyComponent.test.js
-npx vitest run --reporter=verbose src/
-```
-
-Run tests in watch mode:
-```bash
-npx vitest
+npx vitest run src/components/__tests__/Button.test.js
+npx vitest run --reporter=verbose src/composables/
 ```
 
 ### Linting
-**Currently not configured.** If adding linting, use:
+Not configured. To add ESLint:
 ```bash
 npm install -D eslint @eslint/js eslint-plugin-vue
-```
-
-Run lint:
-```bash
 npx eslint src --ext .vue,.js,.jsx
 ```
 
 ## Code Style Guidelines
 
-### General
-- Use ES modules (`import`/`export`)
-- Use async/await over raw promises
-- Prefer functional patterns and composition API (Vue 3)
-
 ### Imports
-- Use path alias `@` for src imports (e.g., `import App from '@/App.vue'`)
-- Order: external libs → internal aliases → relative paths
-- Group: imports → type imports → blank line → exports
+- Use path alias `@` for src imports
+- Order: Vue core → external libs → internal aliases → relative → styles
+- Add `.js` extension for backend imports
 
 ```javascript
-import { ref, computed } from 'vue'
-import axios from 'axios'
-import { useRouter } from 'vue-router'
-import MyComponent from '@/components/MyComponent.vue'
-import { myUtil } from '@/utils/myUtil'
-import './styles/main.css'
+// Frontend
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { io } from 'socket.io-client'
+import Button from '@/components/common/Button.vue'
+import { useSocket } from '@/composables/useSocket'
+
+// Backend
+import express from 'express'
+import pool from '../config/database.js'
+import { RoomService } from '../services/RoomService.js'
 ```
 
-### Vue 3 Composition API
-- Use `<script setup>` syntax for all components
-- Prefer `ref` for primitives, `reactive` for objects
-- Destructure props with `defineProps` defaults
-- Use `computed` for derived state
+### Vue 3 Components
+- Use `<script setup>` syntax (all components use this)
+- Destructure props with `defineProps`, emit with `defineEmits`
+- Use `ref` for primitives, `computed` for derived state
+- Expose methods via `defineExpose` when parent needs to call them
 
 ```vue
 <script setup>
 const props = defineProps({
-  title: { type: String, default: 'Default' },
-  count: { type: Number, required: true }
+  variant: { type: String, default: 'primary' },
+  disabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update', 'delete'])
+const emit = defineEmits(['update', 'submit'])
 
 const localState = ref(0)
-const doubled = computed(() => props.count * 2)
+
+defineExpose({ init, reset })
 </script>
 ```
 
 ### Naming Conventions
-- **Components**: PascalCase (e.g., `UserProfile.vue`, `BaseButton.vue`)
-- **Composables**: camelCase with `use` prefix (e.g., `useAuth.js`, `useLocalStorage.ts`)
-- **Utils**: camelCase (e.g., `formatDate.ts`, `validationUtils.ts`)
-- **Constants**: UPPER_SNAKE_CASE
-- **Props**: camelCase in definition, kebab-case in template
-- **CSS Classes**: kebab-case (e.g., `.user-profile`, `.btn-primary`)
+| Type | Convention | Example |
+|------|------------|---------|
+| Components | PascalCase | `GameView.vue`, `BaseButton.vue` |
+| Composables | camelCase + use prefix | `useSocket.js`, `useGame.js` |
+| Utils | camelCase | `formatDate.js` |
+| Constants | UPPER_SNAKE_CASE | `MAX_PLAYERS` |
+| Props | camelCase definition, kebab-case in template | `maxPlayers` / `max-players` |
+| CSS classes | kebab-case, BEM-like | `.ios-button`, `.ios-button--primary` |
+| Socket events | kebab-case | `room-created`, `start-game` |
 
-### TypeScript / JSDoc
-- Use JSDoc for type hints in .js files
-- Prefer TypeScript for new files if possible
-- Define prop types explicitly in `defineProps`
+### Error Handling
+- Use try/catch with async functions
+- Log with context prefix in brackets
+- Emit user-friendly errors to clients
 
 ```javascript
-/** @type {string} */
-const message = 'Hello'
+// Backend
+try {
+  const room = await RoomService.getRoomByCode(roomCode)
+  if (!room) {
+    socket.emit('room-error', { message: '房间号不存在' })
+    return
+  }
+} catch (error) {
+  socket.emit('room-error', { message: error.message })
+}
 
-/**
- * @param {string} name
- * @returns {string}
- */
-function greet(name) {
-  return `Hello, ${name}`
+// Frontend
+try {
+  await connect(url)
+} catch (error) {
+  console.error('[Socket] Error:', error)
 }
 ```
 
-### Error Handling
-- Use try/catch with async functions, always handle errors
-- Display user-friendly error messages in UI
-- Log errors to console with context
+### Logging Convention
+- Use bracketed prefixes: `[Component]`, `[Socket]`, `[Game]`
+- Server logs: `console.log('[Room] Created:', roomCode)`
+- Client logs: `console.log('[Canvas] Initialized:', width, 'x', height)`
+
+### CSS / Styling
+- Use scoped styles (`<style scoped>`)
+- Use CSS custom properties for theming
+- iOS-inspired design system
+
+```css
+.ios-button {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+}
+.ios-button--primary {
+  background: var(--accent);
+  color: white;
+}
+```
+
+### Backend Patterns
+- Service layer pattern (RoomService handles DB operations)
+- Socket handlers in separate file
+- In-memory room state with Map for performance
+- Async/await for all database operations
 
 ```javascript
-async function fetchData() {
-  try {
-    const response = await axios.get('/api/data')
-    return response.data
-  } catch (error) {
-    console.error('[fetchData] Failed:', error)
-    throw new Error('Failed to fetch data')
+// Service pattern
+export const RoomService = {
+  async createRoom(hostId, hostName, targetWord, maxPlayers = 8) {
+    const [result] = await pool.query(
+      `INSERT INTO rooms (...) VALUES (?, ?, ?, ?)`,
+      [hostId, hostName, targetWord, maxPlayers]
+    )
+    return this.getRoomById(result.insertId)
   }
 }
+
+// Socket handler
+socket.on('create-room', async (data) => {
+  try {
+    const room = await RoomService.createRoom(...)
+    socket.emit('room-created', { room })
+  } catch (error) {
+    socket.emit('room-error', { message: error.message })
+  }
+})
 ```
 
 ### Template Best Practices
-- Use `v-if`/`v-else` for conditional rendering
-- Use `v-for` with `:key` (always required)
-- Avoid inline arrow functions in templates
-- Use kebab-case for event names, emit with consistent naming
+- `v-if`/`v-else` for conditional rendering
+- `v-for` with `:key` (required)
+- Use ref for component access: `ref="gameRef"` → `gameRef.value?.init()`
 
 ```vue
 <template>
   <div v-if="loading">Loading...</div>
   <ul v-else>
-    <li v-for="item in items" :key="item.id">
-      {{ item.name }}
+    <li v-for="player in players" :key="player.socket_id">
+      {{ player.player_name }}
     </li>
   </ul>
-  <MyComponent @item-selected="handleSelect" />
+  <GameView ref="gameRef" @leave="handleLeave" />
 </template>
 ```
 
-### CSS / Styling
-- Use scoped styles (`<style scoped>`)
-- Prefer CSS variables for theming
-- Use BEM-like naming for global classes
-- Consider CSS modules for complex components
+### Composables Pattern
+- Export functions, keep shared state as module-level refs
+- Return reactive refs and methods
 
-### File Organization
-```
-src/
-├── assets/         # Static assets (images, fonts)
-├── components/     # Reusable Vue components
-│   └── common/     # Base components (Button, Input)
-├── composables/    # Vue composables (useXxx)
-├── utils/          # Pure utility functions
-├── views/          # Page-level components
-├── router/         # Vue Router config (if needed)
-├── stores/         # Pinia stores (if needed)
-├── App.vue
-└── main.js
+```javascript
+const socket = ref(null)
+const connected = ref(false)
+
+export function useSocket() {
+  const connect = (url) => { socket.value = io(url) }
+  return { socket, connected, connect }
+}
 ```
 
-### Git Conventions
-- Use conventional commits: `feat:`, `fix:`, `chore:`, `docs:`
+## Git Conventions
+- Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`
 - Keep commits atomic and focused
 - Run `npm run build` before pushing
 
-### Additional Recommendations
-- Add `.vscode/recommended-extensions.json` for team consistency
-- Consider adding `vitest.config.js` for test setup
-- Add `eslint.config.js` for code quality
-- Use Vue DevTools browser extension for debugging
+## Security Notes
+- Never expose database credentials in client code
+- Validate all socket event data on server
+- Use parameterized queries (already done with mysql2)
