@@ -71,6 +71,19 @@ const initSocket = () => {
     roomList.value = data.rooms || [];
   });
   
+  socket.value?.on('room-updated', (data) => {
+    const index = roomList.value.findIndex(r => r.room_code === data.room_code);
+    if (index >= 0) {
+      roomList.value[index] = data;
+    } else {
+      roomList.value.push(data);
+    }
+  });
+  
+  socket.value?.on('room-removed', (data) => {
+    roomList.value = roomList.value.filter(r => r.room_code !== data.room_code);
+  });
+  
   socket.value?.on('room-created', () => {
     fetchRoomList();
   });
@@ -112,6 +125,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   off('room-list');
+  off('room-updated');
+  off('room-removed');
   off('room-created');
   off('room-joined');
   off('room-closed');
@@ -153,117 +168,123 @@ onUnmounted(() => {
 
       <p v-if="error" class="form-error">{{ error }}</p>
 
-      <div v-if="mode === 'home'" class="main-actions">
-        <div class="action-cards">
-          <div class="action-card create-card" @click="goToCreate">
-            <div class="card-icon">
-              <Plus :size="32" />
-            </div>
-            <div class="card-content">
-              <h3>创建房间</h3>
-              <p>创建新房间并成为房主</p>
-            </div>
-          </div>
+      <Transition name="slide-fade" mode="out-in">
+        <div v-if="mode === 'home'" class="main-actions" key="home">
+          <Transition name="cards">
+            <div class="action-cards" :class="{ 'with-rooms': roomList.length > 0 }" v-show="true">
+              <div class="action-card create-card" @click="goToCreate">
+                <div class="card-icon">
+                  <Plus :size="32" />
+                </div>
+                <div class="card-content">
+                  <h3>创建房间</h3>
+                  <p>创建新房间并成为房主</p>
+                </div>
+              </div>
 
-          <div class="action-card join-card" @click="goToJoin">
-            <div class="card-icon">
-              <LogIn :size="32" />
+              <div class="action-card join-card" @click="goToJoin">
+                <div class="card-icon">
+                  <LogIn :size="32" />
+                </div>
+                <div class="card-content">
+                  <h3>加入房间</h3>
+                  <p>输入房间号加入游戏</p>
+                </div>
+              </div>
             </div>
-            <div class="card-content">
-              <h3>加入房间</h3>
-              <p>输入房间号加入游戏</p>
+          </Transition>
+
+          <Transition name="fade-slide">
+            <div v-if="roomList.length > 0" class="room-list-container" key="rooms">
+              <h3 class="room-list-title">可用房间</h3>
+              <TransitionGroup name="list" tag="div" class="room-list">
+                <div 
+                  v-for="room in roomList" 
+                  :key="room.room_code" 
+                  class="room-item"
+                  @click="handleJoinByRoom(room)"
+                >
+                  <div class="room-left">
+                    <div class="room-code-display">
+                      <span 
+                        v-for="(digit, index) in room.room_code.split('')" 
+                        :key="index" 
+                        class="digit"
+                      >{{ digit }}</span>
+                    </div>
+                    <div class="room-host">
+                      <User :size="12" class="host-icon" />
+                      {{ room.host_name }}
+                    </div>
+                  </div>
+                  <div class="room-right">
+                    <div class="player-count">
+                      <span class="count-num">{{ room.player_count }}</span>
+                      <span class="count-divider">/</span>
+                      <span class="count-max">{{ room.max_players }}</span>
+                    </div>
+                    <span class="room-status" :class="room.status">
+                      {{ room.status === 'playing' ? '进行中' : '等待中' }}
+                    </span>
+                  </div>
+                </div>
+              </TransitionGroup>
             </div>
-          </div>
+          </Transition>
         </div>
 
-        <div v-if="roomList.length > 0" class="room-list-container">
-          <h3 class="room-list-title">可用房间</h3>
-          <div class="room-list">
-            <div 
-              v-for="room in roomList" 
-              :key="room.room_code" 
-              class="room-item"
-              @click="handleJoinByRoom(room)"
+        <div v-else class="home-form" key="form">
+          <div v-if="mode === 'create'" class="form-group">
+            <label class="form-label">猜题目标</label>
+            <Input 
+              v-model="targetWord" 
+              placeholder="请输入本轮猜题目标（如：小猫）" 
+              :disabled="loading"
+            />
+            <p class="form-hint">其他人需要猜测这个词</p>
+          </div>
+
+          <div v-if="mode === 'join'" class="form-group">
+            <label class="form-label">房间号</label>
+            <Input 
+              v-model="roomCode" 
+              placeholder="请输入6位房间号" 
+              maxlength="6"
+              :disabled="loading"
+            />
+          </div>
+
+          <div class="form-actions">
+            <Button variant="default" size="medium" @click="mode = 'home'" :disabled="loading">
+              返回
+            </Button>
+            <Button 
+              v-if="mode === 'create'" 
+              variant="primary" 
+              size="medium" 
+              @click="handleCreate"
+              :disabled="loading"
             >
-              <div class="room-left">
-                <div class="room-code-display">
-                  <span 
-                    v-for="(digit, index) in room.room_code.split('')" 
-                    :key="index" 
-                    class="digit"
-                  >{{ digit }}</span>
-                </div>
-                <div class="room-host">
-                  <User :size="12" class="host-icon" />
-                  {{ room.host_name }}
-                </div>
-              </div>
-              <div class="room-right">
-                <div class="player-count">
-                  <span class="count-num">{{ room.player_count }}</span>
-                  <span class="count-divider">/</span>
-                  <span class="count-max">{{ room.max_players }}</span>
-                </div>
-                <span class="room-status" :class="room.status">
-                  {{ room.status === 'playing' ? '进行中' : '等待中' }}
-                </span>
-              </div>
-            </div>
+              创建房间
+            </Button>
+            <Button 
+              v-if="mode === 'join'" 
+              variant="primary" 
+              size="medium" 
+              @click="handleJoin"
+              :disabled="loading"
+            >
+              加入房间
+            </Button>
           </div>
         </div>
-      </div>
-
-      <div v-else class="home-form">
-        <div v-if="mode === 'create'" class="form-group">
-          <label class="form-label">猜题目标</label>
-          <Input 
-            v-model="targetWord" 
-            placeholder="请输入本轮猜题目标（如：小猫）" 
-            :disabled="loading"
-          />
-          <p class="form-hint">其他人需要猜测这个词</p>
-        </div>
-
-        <div v-if="mode === 'join'" class="form-group">
-          <label class="form-label">房间号</label>
-          <Input 
-            v-model="roomCode" 
-            placeholder="请输入6位房间号" 
-            maxlength="6"
-            :disabled="loading"
-          />
-        </div>
-
-        <div class="form-actions">
-          <Button variant="default" size="medium" @click="mode = 'home'" :disabled="loading">
-            返回
-          </Button>
-          <Button 
-            v-if="mode === 'create'" 
-            variant="primary" 
-            size="medium" 
-            @click="handleCreate"
-            :disabled="loading"
-          >
-            创建房间
-          </Button>
-          <Button 
-            v-if="mode === 'join'" 
-            variant="primary" 
-            size="medium" 
-            @click="handleJoin"
-            :disabled="loading"
-          >
-            加入房间
-          </Button>
-        </div>
-      </div>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script>
-import { Users, Plus, LogIn, RefreshCw } from 'lucide-vue-next';
+import { Users, Plus, LogIn, RefreshCw, User } from 'lucide-vue-next';
 export default {
   components: { Users, Plus, LogIn, RefreshCw, User }
 }
@@ -355,6 +376,11 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  transition: all 0.3s ease;
+}
+
+.action-cards.with-rooms {
+  margin-bottom: 8px;
 }
 
 .action-card {
@@ -591,5 +617,61 @@ export default {
 
 .form-actions button {
   flex: 1;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.cards-enter-active,
+.cards-leave-active {
+  transition: all 0.3s ease;
+}
+
+.cards-enter-from,
+.cards-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.list-move {
+  transition: transform 0.3s ease;
 }
 </style>

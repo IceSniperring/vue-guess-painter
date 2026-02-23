@@ -48,6 +48,14 @@ export function setupSocket(io) {
           room: { ...room, targetWord }
         });
 
+        io.emit('room-updated', {
+          room_code: room.room_code,
+          host_name: hostName,
+          max_players: room.max_players,
+          status: 'waiting',
+          player_count: 1
+        });
+
         console.log(`[Room] Created: ${room.room_code} by ${hostName}`);
       } catch (error) {
         socket.emit('room-error', { message: error.message });
@@ -102,6 +110,14 @@ export function setupSocket(io) {
           count: updatedPlayers.length
         });
 
+        io.emit('room-updated', {
+          room_code: roomCode,
+          host_name: roomData.host_name,
+          max_players: roomData.max_players,
+          status: roomData.status || 'waiting',
+          player_count: updatedPlayers.length
+        });
+
         console.log(`[Room] ${playerName} joined ${roomCode}, strokes: ${roomData.strokes?.length || 0}`);
       } catch (error) {
         socket.emit('room-error', { message: error.message });
@@ -127,6 +143,14 @@ export function setupSocket(io) {
         
         socket.to(roomCode).emit('game-started', {
           targetWord: null
+        });
+
+        io.emit('room-updated', {
+          room_code: roomCode,
+          host_name: roomData.host_name,
+          max_players: roomData.max_players,
+          status: 'playing',
+          player_count: roomData.players?.length || 0
         });
 
         console.log(`[Game] Started in room ${roomCode}`);
@@ -217,6 +241,14 @@ export function setupSocket(io) {
         await RoomService.updateRoomStatus(roomData.id, 'waiting');
         
         io.to(roomCode).emit('game-ended', {});
+
+        io.emit('room-updated', {
+          room_code: roomCode,
+          host_name: roomData.host_name,
+          max_players: roomData.max_players,
+          status: 'waiting',
+          player_count: roomData.players?.length || 0
+        });
 
         console.log(`[Game] Ended in room ${roomCode}`);
       } catch (error) {
@@ -315,6 +347,7 @@ async function handleLeaveRoom(io, socket, roomCode) {
     rooms.delete(roomCode);
     
     io.to(roomCode).emit('room-closed', { message: '房主已退出，房间关闭' });
+    io.emit('room-removed', { room_code: roomCode });
     console.log(`[Room] ${roomCode} closed by host`);
   } else {
     await RoomService.removePlayer(socket.id);
@@ -324,6 +357,14 @@ async function handleLeaveRoom(io, socket, roomCode) {
     io.to(roomCode).emit('player-left', {
       playerName: player.player_name,
       count: updatedPlayers.length
+    });
+    
+    io.emit('room-updated', {
+      room_code: roomCode,
+      host_name: roomData.host_name,
+      max_players: roomData.max_players,
+      status: roomData.status,
+      player_count: updatedPlayers.length
     });
     console.log(`[Room] ${player.player_name} left ${roomCode}`);
   }
