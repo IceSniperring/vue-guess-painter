@@ -20,6 +20,7 @@ const lastPos = ref({ x: 0, y: 0 });
 const canvasReady = ref(false);
 const isHovering = ref(false);
 const cursorPos = ref({ x: 0, y: 0 });
+const localCurrentStroke = ref([]);
 
 const emit = defineEmits(['draw-sync']);
 
@@ -146,6 +147,7 @@ const handleMouseMove = (e) => {
       isEraser: props.isEraser
     };
 
+    localCurrentStroke.value.push(drawData);
     props.socketEmit('draw', { roomCode: props.roomCode, drawData });
     
     lastPos.value = currentPos;
@@ -161,7 +163,14 @@ const handleMouseLeave = () => {
 };
 
 const stopDrawing = () => {
-  isDrawing.value = false;
+  if (isDrawing.value) {
+    isDrawing.value = false;
+    if (props.isHost && props.gameStatus === 'playing' && localCurrentStroke.value.length > 0) {
+      const drawData = { type: 'stroke-end', stroke: [...localCurrentStroke.value] };
+      props.socketEmit('draw', { roomCode: props.roomCode, drawData });
+      localCurrentStroke.value = [];
+    }
+  }
 };
 
 const handleDrawSync = (data) => {
@@ -213,6 +222,7 @@ const clearCanvas = () => {
   const size = getCanvasSize();
   ctx.value.fillStyle = '#FFFFFF';
   ctx.value.fillRect(0, 0, size.width, size.height);
+  localCurrentStroke.value = [];
 };
 
 const resetCanvas = () => {
@@ -221,9 +231,10 @@ const resetCanvas = () => {
     ctx.value.fillStyle = '#FFFFFF';
     ctx.value.fillRect(0, 0, size.width, size.height);
   }
+  localCurrentStroke.value = [];
 };
 
-defineExpose({ initCanvas, redrawAll, handleDrawSync, replayDrawHistory, clearCanvas, resetCanvas });
+defineExpose({ initCanvas, redrawAll, handleDrawSync, replayDrawHistory, clearCanvas, resetCanvas, canvasReady });
 </script>
 
 <template>

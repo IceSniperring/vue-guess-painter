@@ -43,6 +43,7 @@ const answer = ref('');
 const answerError = ref('');
 
 const hostInputWord = ref('');
+const hostInputType = ref('');
 
 const drawingColor = ref('#000000');
 const drawingWidth = ref(4);
@@ -53,7 +54,31 @@ const currentStroke = ref([]);
 const voteCountdown = ref(30);
 let voteTimer = null;
 
+const gameElapsed = ref(0);
+let gameTimer = null;
+
 const canvasRef = ref(null);
+
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+const startGameTimer = () => {
+  gameElapsed.value = 0;
+  if (gameTimer) clearInterval(gameTimer);
+  gameTimer = setInterval(() => {
+    gameElapsed.value++;
+  }, 1000);
+};
+
+const stopGameTimer = () => {
+  if (gameTimer) {
+    clearInterval(gameTimer);
+    gameTimer = null;
+  }
+};
 
 const showNotification = (message, type = 'info') => {
   toastRef.value?.addToast(message, type);
@@ -161,7 +186,13 @@ const clearCanvas = () => {
   socketEmit('draw', { roomCode: roomCode.value, drawData });
 };
 
+let currentSocketId = null;
+let isLeavingRoom = false;
+
 const leaveRoom = () => {
+  if (isLeavingRoom) return;
+  isLeavingRoom = true;
+  currentSocketId = socket.value?.id;
   socketEmit('leave-room', { roomCode: roomCode.value });
   disconnect();
   reset();
@@ -181,8 +212,15 @@ const setupSocketListeners = () => {
     setIsHost(data.isHost);
     
     if (data.drawHistory && data.drawHistory.length > 0) {
-      canvasRef.value?.replayDrawHistory(data.drawHistory);
-      strokes.value = data.drawHistory;
+      const checkCanvas = () => {
+        if (canvasRef.value?.canvasReady) {
+          canvasRef.value?.replayDrawHistory(data.drawHistory);
+          strokes.value = data.drawHistory;
+        } else {
+          setTimeout(checkCanvas, 100);
+        }
+      };
+      checkCanvas();
     }
   });
 
@@ -196,6 +234,10 @@ const setupSocketListeners = () => {
   });
 
   socketOn('player-left', (data) => {
+    if (currentSocketId && socket.value?.id === currentSocketId) {
+      currentSocketId = null;
+      return;
+    }
     const newPlayers = players.value.filter(p => p.socket_id !== socket.value?.id);
     setPlayers(newPlayers);
     showNotification(`${data.playerName} 退出了房间`, 'info');
@@ -218,11 +260,13 @@ const setupSocketListeners = () => {
     strokes.value = [];
     currentStroke.value = [];
     canvasRef.value?.resetCanvas();
+    startGameTimer();
     showNotification('游戏开始！', 'success');
   });
 
   socketOn('game-ended', () => {
     updateGameStatus('waiting');
+    stopGameTimer();
     hostInputWord.value = '';
     showNotification('游戏结束', 'info');
   });
@@ -286,6 +330,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (voteTimer) clearInterval(voteTimer);
+  if (gameTimer) clearInterval(gameTimer);
   disconnect();
 });
 
@@ -317,12 +362,12 @@ defineExpose({ init });
       <div class="header-right">
         <button 
           v-if="isHost && gameStatus === 'playing'" 
-          class="header-stop-btn" 
+          class="stop-btn-with-timer" 
           @click="endGame"
           title="停止游戏"
         >
+          <span class="stop-timer">{{ formatTime(gameElapsed) }}</span>
           <Square :size="18" />
-          <span class="header-stop-tooltip">停止游戏</span>
         </button>
         <span class="status-badge" :class="gameStatus">
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
@@ -369,12 +414,20 @@ defineExpose({ init });
         />
 
         <div v-if="isHost && gameStatus === 'waiting'" class="game-controls">
-          <input
-            v-model="hostInputWord"
-            type="text"
-            placeholder="输入本轮猜题目标"
-            class="host-word-input"
-          />
+          <div class="host-inputs-group">
+            <input
+              v-model="hostInputWord"
+              type="text"
+              placeholder="输入本轮猜题目标"
+              class="host-word-input"
+            />
+            <input
+              v-model="hostInputType"
+              type="text"
+              placeholder="猜测类型（如：动物、成语）"
+              class="host-word-input"
+            />
+          </div>
           <button 
             class="host-btn host-btn--success" 
             @click="startGame"
@@ -515,7 +568,33 @@ defineExpose({ init });
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+}
+
+.stop-btn-with-timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #FF3B30 0%, #FF2D55 100%);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+}
+
+.stop-btn-with-timer:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+}
+
+.stop-timer {
+  letter-spacing: 1px;
 }
 
 .header-actions {
@@ -615,17 +694,22 @@ defineExpose({ init });
   background: var(--bg-card);
   border-radius: 20px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  max-width: 700px;
   width: 100%;
 }
 
+.host-inputs-group {
+  flex: 8;
+  display: flex;
+  gap: 10px;
+}
+
 .host-word-input {
-  flex: 2;
-  padding: 14px 20px;
-  font-size: 16px;
+  flex: 1;
+  padding: 14px 16px;
+  font-size: 15px;
   font-weight: 500;
   border: 2px solid var(--separator);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--bg-secondary);
   color: var(--text-primary);
   outline: none;
@@ -650,11 +734,11 @@ defineExpose({ init });
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 14px 18px;
-  font-size: 15px;
+  padding: 14px 16px;
+  font-size: 14px;
   font-weight: 600;
   border: none;
-  border-radius: 14px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
   white-space: nowrap;
@@ -662,7 +746,6 @@ defineExpose({ init });
   -webkit-user-select: none;
   position: relative;
   overflow: hidden;
-  flex: 1;;
   flex: 1;
 }
 

@@ -102,7 +102,7 @@ export function setupSocket(io) {
           room: roomData,
           players: updatedPlayers,
           isHost: false,
-          drawHistory: roomData.strokes || []
+          drawHistory: roomData.draw_history || []
         });
 
         io.to(roomCode).emit('player-joined', {
@@ -178,11 +178,11 @@ export function setupSocket(io) {
 
         if (drawData.type === 'segment') {
           roomData.current_stroke.push(drawData);
-          roomData.draw_history.push(drawData);
         } else if (drawData.type === 'stroke-end') {
           if (roomData.current_stroke.length > 0) {
             roomData.strokes = roomData.strokes || [];
             roomData.strokes.push([...roomData.current_stroke]);
+            roomData.draw_history.push([...roomData.current_stroke]);
             roomData.current_stroke = [];
           }
         } else if (drawData.type === 'clear') {
@@ -195,7 +195,7 @@ export function setupSocket(io) {
             roomData.strokes.pop();
             roomData.draw_history = [];
             for (const stroke of roomData.strokes) {
-              roomData.draw_history.push(...stroke);
+              roomData.draw_history.push([...stroke]);
             }
           }
         }

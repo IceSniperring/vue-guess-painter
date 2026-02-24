@@ -96,29 +96,34 @@ const emit = defineEmits(['vote']);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  background: var(--bg-secondary);
-  border: 2px solid transparent;
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--separator);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-primary);
+  font-weight: 500;
 }
 
 .candidate-btn:hover {
-  background: rgba(0, 122, 255, 0.1);
-  border-color: var(--accent);
+  background: var(--bg-tertiary);
+  border-color: var(--text-tertiary);
+}
+
+.candidate-btn:active {
+  transform: scale(0.98);
 }
 
 .candidate-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #34C759, #30D158);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   border-radius: 50%;
   font-weight: 600;
   font-size: 14px;
