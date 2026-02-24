@@ -1,36 +1,46 @@
 <script setup>
-import { Crown } from 'lucide-vue-next';
+import { inject, computed } from 'vue';
+import { Crown, Users } from 'lucide-vue-next';
+
+const { isDark } = inject('theme');
 
 const props = defineProps({
   players: Array
 });
 
-const getAvatarColor = (name) => {
-  const colors = [
-    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
-    'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-  ];
-  const index = name.charCodeAt(0) % colors.length;
-  return colors[index];
+const getAvatarStyle = computed(() => {
+  const bgColor = isDark.value ? '#2C2C2E' : '#F5F5F7';
+  const textColor = isDark.value ? '#F5F5F7' : '#1C1C1E';
+  return {
+    background: bgColor,
+    color: textColor,
+    border: '1px solid var(--separator)'
+  };
+});
+
+const getDuplicateIndex = (player) => {
+  const duplicates = props.players.filter(p => 
+    p.player_name.charAt(0).toUpperCase() === player.player_name.charAt(0).toUpperCase()
+  );
+  if (duplicates.length <= 1) return null;
+  const index = duplicates.indexOf(player);
+  return index + 1;
 };
 </script>
 
 <template>
   <div class="card players-card">
     <h3 class="card-title">
-      <span class="title-icon">👥</span>
+      <Users :size="18" />
       玩家列表
     </h3>
     <ul class="players-list">
       <li v-for="player in players" :key="player.socket_id" class="player-item">
-        <div class="player-avatar" :style="{ background: getAvatarColor(player.player_name) }">
+        <div class="avatar-wrapper" :style="getAvatarStyle">
           {{ player.player_name.charAt(0).toUpperCase() }}
+          <span v-if="getDuplicateIndex(player)" class="duplicate-badge">
+            {{ getDuplicateIndex(player) }}
+          </span>
         </div>
         <span class="player-name">{{ player.player_name }}</span>
         <Crown v-if="player.is_host" :size="16" class="host-badge" />
@@ -57,10 +67,6 @@ const getAvatarColor = (name) => {
   margin-bottom: 12px;
 }
 
-.title-icon {
-  font-size: 16px;
-}
-
 .players-list {
   list-style: none;
 }
@@ -76,18 +82,34 @@ const getAvatarColor = (name) => {
   border-bottom: 1px solid var(--separator);
 }
 
-.player-avatar {
-  width: 40px;
-  height: 40px;
+.avatar-wrapper {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  color: white;
-  font-size: 16px;
+  border-radius: 10px;
+  font-size: 15px;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   flex-shrink: 0;
+  position: relative;
+}
+
+.duplicate-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .player-name {

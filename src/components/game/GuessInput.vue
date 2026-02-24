@@ -1,7 +1,5 @@
 <script setup>
-import { HelpCircle } from 'lucide-vue-next';
-import Button from '@/components/common/Button.vue';
-import Input from '@/components/common/Input.vue';
+import { HelpCircle, Check } from 'lucide-vue-next';
 
 const props = defineProps({
   answer: String,
@@ -19,13 +17,24 @@ const emit = defineEmits(['update:answer', 'submit']);
       提交答案
     </h3>
     <div class="guess-form">
-      <Input 
-        :modelValue="answer" 
-        @update:modelValue="$emit('update:answer', $event)" 
-        placeholder="输入你的答案..." 
-        @keyup.enter="$emit('submit')" 
-      />
-      <Button variant="primary" @click="$emit('submit')" :disabled="!answer.trim()">提交</Button>
+      <div class="input-wrapper" :class="{ 'has-content': answer.trim() }">
+        <input 
+          :value="answer"
+          @input="$emit('update:answer', $event.target.value)"
+          type="text"
+          placeholder="输入你的答案..."
+          class="guess-input-field"
+          @keyup.enter="$emit('submit')"
+        />
+        <button 
+          class="submit-btn"
+          :class="{ active: answer.trim() }"
+          :disabled="!answer.trim()"
+          @click="$emit('submit')"
+        >
+          <Check :size="20" />
+        </button>
+      </div>
     </div>
     <p v-if="answerError" class="guess-error">{{ answerError }}</p>
   </div>
@@ -51,13 +60,64 @@ const emit = defineEmits(['update:answer', 'submit']);
 
 .guess-form {
   display: flex;
-  gap: 8px;
   align-items: stretch;
 }
 
-.guess-form :deep(.ios-button) {
-  white-space: nowrap;
+.input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 2px solid var(--separator);
+  border-radius: 12px;
+  transition: all 0.2s;
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+}
+
+.input-wrapper.has-content {
+  border-color: var(--accent);
+}
+
+.guess-input-field {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 0 12px 16px;
+  font-size: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.guess-input-field::placeholder {
+  color: var(--text-tertiary);
+}
+
+.submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  transition: all 0.2s;
   flex-shrink: 0;
+}
+
+.submit-btn.active {
+  color: #34C759;
+  cursor: pointer;
+}
+
+.submit-btn.active:hover {
+  color: #30D158;
 }
 
 .guess-error {

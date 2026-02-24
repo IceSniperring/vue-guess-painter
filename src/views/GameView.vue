@@ -5,7 +5,7 @@ import Modal from '@/components/common/Modal.vue';
 import Toast from '@/components/common/Toast.vue';
 import { useSocket } from '@/composables/useSocket';
 import { useGame } from '@/composables/useGame';
-import { Play, Square, Vote, LogOut, Target, Moon, Sun } from 'lucide-vue-next';
+import { Play, Square, Vote, LogOut, Target, Moon, Sun, Lightbulb } from 'lucide-vue-next';
 import DrawingCanvas from '@/components/game/DrawingCanvas.vue';
 import DrawingToolbar from '@/components/game/DrawingToolbar.vue';
 import PlayerList from '@/components/game/PlayerList.vue';
@@ -25,10 +25,10 @@ const emit = defineEmits(['leave']);
 
 const { socket, connect, disconnect, emit: socketEmit, on: socketOn } = useSocket();
 const { 
-  room, players, isHost, gameStatus, targetWord, 
+  room, players, isHost, gameStatus, targetWord, targetHint,
   votes, candidates,
   roomCode, hostName, playerCount, maxPlayers,
-  setRoom, setPlayers, setIsHost, updateGameStatus, setTargetWord,
+  setRoom, setPlayers, setIsHost, updateGameStatus, setTargetWord, setTargetHint,
   setVotes, setCandidates, reset
 } = useGame();
 
@@ -43,7 +43,7 @@ const answer = ref('');
 const answerError = ref('');
 
 const hostInputWord = ref('');
-const hostInputType = ref('');
+const hostInputHint = ref('');
 
 const drawingColor = ref('#000000');
 const drawingWidth = ref(4);
@@ -98,7 +98,11 @@ const startGame = () => {
     showNotification('请输入猜题目标', 'warning');
     return;
   }
-  socketEmit('start-game', { roomCode: roomCode.value, targetWord: hostInputWord.value });
+  socketEmit('start-game', { 
+    roomCode: roomCode.value, 
+    targetWord: hostInputWord.value,
+    targetHint: hostInputHint.value 
+  });
 };
 
 const endGame = () => {
@@ -194,9 +198,11 @@ const leaveRoom = () => {
   isLeavingRoom = true;
   currentSocketId = socket.value?.id;
   socketEmit('leave-room', { roomCode: roomCode.value });
-  disconnect();
-  reset();
-  emit('leave');
+  setTimeout(() => {
+    disconnect();
+    reset();
+    emit('leave');
+  }, 100);
 };
 
 const setupSocketListeners = () => {
@@ -210,6 +216,9 @@ const setupSocketListeners = () => {
     setRoom(data.room);
     setPlayers(data.players);
     setIsHost(data.isHost);
+    if (data.targetHint) {
+      setTargetHint(data.targetHint);
+    }
     
     if (data.drawHistory && data.drawHistory.length > 0) {
       const checkCanvas = () => {
@@ -233,12 +242,19 @@ const setupSocketListeners = () => {
     showNotification(`${data.player.player_name} 加入了房间`, 'info');
   });
 
+  socketOn('room-updated', (data) => {
+    if (room.value) {
+      room.value.host_name = data.host_name;
+      room.value.status = data.status;
+    }
+  });
+
   socketOn('player-left', (data) => {
-    if (currentSocketId && socket.value?.id === currentSocketId) {
-      currentSocketId = null;
+    if (isLeavingRoom) {
+      isLeavingRoom = false;
       return;
     }
-    const newPlayers = players.value.filter(p => p.socket_id !== socket.value?.id);
+    const newPlayers = players.value.filter(p => p.socket_id !== data.socketId);
     setPlayers(newPlayers);
     showNotification(`${data.playerName} 退出了房间`, 'info');
   });
@@ -257,6 +273,7 @@ const setupSocketListeners = () => {
   socketOn('game-started', (data) => {
     updateGameStatus('playing');
     setTargetWord(data.targetWord);
+    setTargetHint(data.targetHint || '');
     strokes.value = [];
     currentStroke.value = [];
     canvasRef.value?.resetCanvas();
@@ -268,6 +285,7 @@ const setupSocketListeners = () => {
     updateGameStatus('waiting');
     stopGameTimer();
     hostInputWord.value = '';
+    hostInputHint.value = '';
     showNotification('游戏结束', 'info');
   });
 
@@ -364,10 +382,10 @@ defineExpose({ init });
           v-if="isHost && gameStatus === 'playing'" 
           class="stop-btn-with-timer" 
           @click="endGame"
-          title="停止游戏"
         >
           <span class="stop-timer">{{ formatTime(gameElapsed) }}</span>
           <Square :size="18" />
+          <span class="stop-tooltip">停止游戏</span>
         </button>
         <span class="status-badge" :class="gameStatus">
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
@@ -422,9 +440,9 @@ defineExpose({ init });
               class="host-word-input"
             />
             <input
-              v-model="hostInputType"
+              v-model="hostInputHint"
               type="text"
-              placeholder="猜测类型（如：动物、成语）"
+              placeholder="猜测提示（如：动物）"
               class="host-word-input"
             />
           </div>
@@ -449,12 +467,28 @@ defineExpose({ init });
       <aside class="sidebar">
         <PlayerList :players="players" />
 
+        <div v-if="!isHost && gameStatus === 'playing' && targetHint" class="card hint-card">
+          <h3 class="card-title">
+            <Lightbulb :size="18" />
+            猜测提示
+          </h3>
+          <p class="hint-text">{{ targetHint }}</p>
+        </div>
+
         <GuessInput
           v-if="!isHost && gameStatus === 'playing'"
           v-model:answer="answer"
           :answerError="answerError"
           @submit="submitAnswer"
         />
+
+        <div v-if="isHost && gameStatus === 'playing' && targetHint" class="card hint-card">
+          <h3 class="card-title">
+            <Lightbulb :size="18" />
+            猜测提示
+          </h3>
+          <p class="hint-text">{{ targetHint }}</p>
+        </div>
 
         <div v-if="isHost && gameStatus === 'playing'" class="card target-card">
           <h3 class="card-title">
@@ -468,6 +502,8 @@ defineExpose({ init });
           :gameStatus="gameStatus"
           :candidates="candidates"
           :voteCountdown="voteCountdown"
+          :votes="votes"
+          :mySocketId="socket?.id"
           @vote="vote"
         />
       </aside>
@@ -586,6 +622,7 @@ defineExpose({ init });
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+  position: relative;
 }
 
 .stop-btn-with-timer:hover {
@@ -593,8 +630,33 @@ defineExpose({ init });
   box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
 }
 
+.stop-btn-with-timer:hover .stop-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 .stop-timer {
   letter-spacing: 1px;
+}
+
+.stop-tooltip {
+  position: absolute;
+  bottom: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  z-index: 100;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .header-actions {
@@ -857,6 +919,20 @@ defineExpose({ init });
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 12px;
+}
+
+.hint-card {
+  background: var(--bg-primary);
+}
+
+.hint-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
 }
 
 .target-word {

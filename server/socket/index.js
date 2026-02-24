@@ -102,7 +102,8 @@ export function setupSocket(io) {
           room: roomData,
           players: updatedPlayers,
           isHost: false,
-          drawHistory: roomData.draw_history || []
+          drawHistory: roomData.draw_history || [],
+          targetHint: roomData.target_hint || ''
         });
 
         io.to(roomCode).emit('player-joined', {
@@ -126,7 +127,7 @@ export function setupSocket(io) {
 
     socket.on('start-game', async (data) => {
       try {
-        const { roomCode, targetWord } = data;
+        const { roomCode, targetWord, targetHint } = data;
         const roomData = rooms.get(roomCode);
         
         if (!roomData || roomData.host_id !== socket.id) {
@@ -140,16 +141,19 @@ export function setupSocket(io) {
         }
 
         roomData.target_word = targetWord.trim();
+        roomData.target_hint = targetHint ? targetHint.trim() : '';
         await RoomService.updateTargetWord(roomData.id, roomData.target_word);
         await RoomService.updateRoomStatus(roomData.id, 'playing');
         roomData.status = 'playing';
         
         socket.emit('game-started', {
-          targetWord: roomData.target_word
+          targetWord: roomData.target_word,
+          targetHint: roomData.target_hint
         });
         
         socket.to(roomCode).emit('game-started', {
-          targetWord: null
+          targetWord: null,
+          targetHint: roomData.target_hint
         });
 
         io.emit('room-updated', {
@@ -311,7 +315,11 @@ export function setupSocket(io) {
         if (!roomData || roomData.status !== 'voting') return;
         if (!roomData.votes) roomData.votes = {};
 
-        roomData.votes[socket.id] = candidateId;
+        if (roomData.votes[socket.id] === candidateId) {
+          delete roomData.votes[socket.id];
+        } else {
+          roomData.votes[socket.id] = candidateId;
+        }
 
         io.to(roomCode).emit('vote-updated', {
           votes: roomData.votes,
@@ -363,6 +371,7 @@ async function handleLeaveRoom(io, socket, roomCode) {
     
     io.to(roomCode).emit('player-left', {
       playerName: player.player_name,
+      socketId: socket.id,
       count: updatedPlayers.length
     });
     

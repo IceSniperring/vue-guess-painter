@@ -5,6 +5,7 @@ const players = ref([]);
 const isHost = ref(false);
 const gameStatus = ref('waiting');
 const targetWord = ref('');
+const targetHint = ref('');
 const drawHistory = ref([]);
 const votes = ref({});
 const candidates = ref([]);
@@ -34,6 +35,10 @@ export function useGame() {
     targetWord.value = word;
   };
 
+  const setTargetHint = (hint) => {
+    targetHint.value = hint;
+  };
+
   const addDrawData = (data) => {
     drawHistory.value.push(data);
   };
@@ -60,6 +65,7 @@ export function useGame() {
     isHost.value = false;
     gameStatus.value = 'waiting';
     targetWord.value = '';
+    targetHint.value = '';
     drawHistory.value = [];
     votes.value = {};
     candidates.value = [];
@@ -81,6 +87,7 @@ export function useGame() {
     isHost,
     gameStatus,
     targetWord,
+    targetHint,
     drawHistory,
     votes,
     candidates,
@@ -95,6 +102,7 @@ export function useGame() {
     setIsHost,
     updateGameStatus,
     setTargetWord,
+    setTargetHint,
     addDrawData,
     clearDrawHistory,
     setVotes,
