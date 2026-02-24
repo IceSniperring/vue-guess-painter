@@ -391,14 +391,14 @@ defineExpose({ init });
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
         </span>
         <div class="header-actions">
-          <Button variant="default" size="small" @click="toggleTheme">
-            <Moon v-if="isDark" :size="16" />
-            <Sun v-else :size="16" />
-          </Button>
-          <Button variant="danger" size="small" @click="leaveRoom">
-            <LogOut :size="16" />
-            退出
-          </Button>
+          <button class="icon-btn" @click="toggleTheme">
+            <Moon v-if="isDark" :size="18" />
+            <Sun v-else :size="18" />
+          </button>
+          <button class="leave-btn" @click="leaveRoom">
+            <LogOut :size="18" />
+            <span>退出</span>
+          </button>
         </div>
       </div>
     </header>
@@ -662,27 +662,66 @@ defineExpose({ init });
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.leave-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  color: var(--accent-red);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.leave-btn:hover {
+  background: var(--bg-tertiary);
 }
 
 .status-badge {
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 8px 14px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
 }
 
 .status-badge.waiting {
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   color: var(--text-secondary);
+  border: 1px solid var(--separator);
 }
 
 .status-badge.playing {
-  background: linear-gradient(135deg, #34C759, #30D158);
+  background: var(--accent);
   color: white;
 }
 
 .status-badge.voting {
-  background: linear-gradient(135deg, #FF9500, #FF6B00);
+  background: var(--accent-orange);
   color: white;
 }
 

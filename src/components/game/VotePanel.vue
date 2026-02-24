@@ -50,8 +50,14 @@ const emit = defineEmits(['vote']);
       <span class="vote-count">{{ totalVotes }} 票</span>
     </div>
     
-    <div class="vote-timer">
-      <div class="timer-bar" :style="{ width: (voteCountdown / 30 * 100) + '%' }"></div>
+    <div class="vote-timer-wrapper">
+      <div class="vote-timer">
+        <div class="timer-bar" :style="{ width: (voteCountdown / 30 * 100) + '%' }"></div>
+      </div>
+      <div class="timer-right">
+        <Timer :size="14" />
+        <span>{{ voteCountdown }}s</span>
+      </div>
     </div>
     
     <div class="vote-hint">
@@ -80,7 +86,7 @@ const emit = defineEmits(['vote']);
             class="check-circle"
             :class="{ checked: getMyVote === candidate.socket_id }"
           >
-            <span v-if="getMyVote === candidate.socket_id">✓</span>
+            <span v-if="getMyVote === candidate.socket_id" class="checkmark">✓</span>
           </div>
         </div>
       </div>
@@ -118,11 +124,19 @@ const emit = defineEmits(['vote']);
   color: var(--accent);
 }
 
+.vote-timer-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .vote-timer {
+  flex: 1;
   height: 4px;
   background: var(--bg-tertiary);
   border-radius: 2px;
-  margin-bottom: 12px;
+  position: relative;
 }
 
 .timer-bar {
@@ -130,6 +144,16 @@ const emit = defineEmits(['vote']);
   background: var(--accent);
   border-radius: 2px;
   transition: width 1s linear;
+}
+
+.timer-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .vote-hint {
@@ -150,7 +174,7 @@ const emit = defineEmits(['vote']);
   justify-content: space-between;
   padding: 10px 12px;
   background: var(--bg-secondary);
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s;
@@ -202,21 +226,42 @@ const emit = defineEmits(['vote']);
 }
 
 .check-circle {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid var(--separator);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  color: transparent;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
 
 .check-circle.checked {
   background: var(--accent);
   border-color: var(--accent);
+  animation: scaleIn 0.2s ease;
+}
+
+.check-circle .checkmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
   color: white;
+  font-size: 12px;
+  font-weight: 700;
+  animation: checkmark 0.2s ease;
+}
+
+@keyframes scaleIn {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes checkmark {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 </style>
