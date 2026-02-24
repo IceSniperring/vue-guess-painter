@@ -2,6 +2,8 @@
 import { ref, onMounted, onUnmounted, inject } from 'vue';
 import Button from '@/components/common/Button.vue';
 import Input from '@/components/common/Input.vue';
+import Modal from '@/components/common/Modal.vue';
+import Toast from '@/components/common/Toast.vue';
 import { useSocket } from '@/composables/useSocket';
 import { Users, Plus, LogIn, User, Moon, Sun } from 'lucide-vue-next';
 
@@ -11,45 +13,45 @@ const { isDark, toggleTheme } = inject('theme');
 const mode = ref('home');
 const roomCode = ref('');
 const playerName = ref('');
-const targetWord = ref('');
-const error = ref('');
 const loading = ref(false);
 const roomList = ref([]);
+
+const showCreateModal = ref(false);
+const showJoinModal = ref(false);
+
+const toastRef = ref(null);
+
+const showNotification = (message, type = 'warning') => {
+  toastRef.value?.addToast(message, type);
+};
 
 const emit = defineEmits(['create-room', 'join-room']);
 
 const handleCreate = () => {
   if (!playerName.value.trim()) {
-    error.value = '请输入您的昵称';
+    showNotification('请输入您的昵称');
     return;
   }
-  if (!targetWord.value.trim()) {
-    error.value = '请输入猜题目标';
-    return;
-  }
-  error.value = '';
-  emit('create-room', { playerName: playerName.value, targetWord: targetWord.value });
+  emit('create-room', { playerName: playerName.value });
 };
 
 const handleJoin = () => {
   if (!playerName.value.trim()) {
-    error.value = '请输入您的昵称';
+    showNotification('请输入您的昵称');
     return;
   }
   if (!roomCode.value.trim() || roomCode.value.length !== 6) {
-    error.value = '请输入6位房间号';
+    showNotification('请输入6位房间号');
     return;
   }
-  error.value = '';
   emit('join-room', { playerName: playerName.value, roomCode: roomCode.value });
 };
 
 const handleJoinByRoom = (room) => {
   if (!playerName.value.trim()) {
-    error.value = '请先输入您的昵称';
+    showNotification('请先输入您的昵称');
     return;
   }
-  error.value = '';
   emit('join-room', { playerName: playerName.value, roomCode: room.room_code });
 };
 
@@ -104,20 +106,41 @@ const initSocket = () => {
 
 const goToCreate = () => {
   if (!playerName.value.trim()) {
-    error.value = '请先输入您的昵称';
-    mode.value = 'create';
+    showNotification('请先输入您的昵称');
     return;
   }
-  mode.value = 'create';
+  showCreateModal.value = true;
 };
 
 const goToJoin = () => {
   if (!playerName.value.trim()) {
-    error.value = '请先输入您的昵称';
-    mode.value = 'join';
+    showNotification('请先输入您的昵称');
     return;
   }
-  mode.value = 'join';
+  showJoinModal.value = true;
+};
+
+const handleCreateConfirm = () => {
+  showCreateModal.value = false;
+  emit('create-room', { playerName: playerName.value });
+};
+
+const handleJoinConfirm = () => {
+  if (!roomCode.value.trim() || roomCode.value.length !== 6) {
+    showNotification('请输入6位房间号');
+    return;
+  }
+  showJoinModal.value = false;
+  emit('join-room', { playerName: playerName.value, roomCode: roomCode.value });
+};
+
+const closeCreateModal = () => {
+  showCreateModal.value = false;
+};
+
+const closeJoinModal = () => {
+  showJoinModal.value = false;
+  roomCode.value = '';
 };
 
 onMounted(() => {
@@ -175,13 +198,8 @@ onUnmounted(() => {
             v-model="playerName" 
             placeholder="请输入昵称" 
             :disabled="loading"
-            @focus="error = ''"
           />
         </div>
-      </Transition>
-
-      <Transition name="error-appear">
-        <p v-if="error" class="form-error">{{ error }}</p>
       </Transition>
 
       <div v-if="mode === 'home'" class="main-actions">
@@ -247,57 +265,53 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-
-      <div v-else class="home-form">
-          <Transition name="form-slide" appear>
-            <div v-if="mode === 'create'" class="form-group">
-              <label class="form-label">猜题目标</label>
-              <Input 
-                v-model="targetWord" 
-                placeholder="请输入本轮猜题目标（如：小猫）" 
-                :disabled="loading"
-              />
-              <p class="form-hint">其他人需要猜测这个词</p>
-            </div>
-          </Transition>
-
-          <Transition name="form-slide" appear>
-            <div v-if="mode === 'join'" class="form-group">
-              <label class="form-label">房间号</label>
-              <Input 
-                v-model="roomCode" 
-                placeholder="请输入6位房间号" 
-                maxlength="6"
-                :disabled="loading"
-              />
-            </div>
-          </Transition>
-
-          <div class="form-actions">
-            <Button variant="default" size="medium" @click="mode = 'home'" :disabled="loading">
-              返回
-            </Button>
-            <Button 
-              v-if="mode === 'create'" 
-              variant="primary" 
-              size="medium" 
-              @click="handleCreate"
-              :disabled="loading"
-            >
-              创建房间
-            </Button>
-            <Button 
-              v-if="mode === 'join'" 
-              variant="primary" 
-              size="medium" 
-              @click="handleJoin"
-              :disabled="loading"
-            >
-              加入房间
-            </Button>
-          </div>
-        </div>
     </div>
+
+    <Modal :show="showCreateModal" title="创建房间" @close="closeCreateModal">
+      <div class="modal-form">
+        <div class="modal-info">
+          <div class="modal-info-icon">
+            <Plus :size="24" />
+          </div>
+          <p>您的昵称：<strong>{{ playerName }}</strong></p>
+        </div>
+        <p class="modal-hint">创建房间后，您将成为房主，可以开始游戏或发起投票</p>
+        <div class="modal-actions">
+          <Button variant="default" @click="closeCreateModal">取消</Button>
+          <Button variant="primary" @click="handleCreateConfirm">创建房间</Button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal :show="showJoinModal" title="加入房间" @close="closeJoinModal">
+      <div class="modal-form">
+        <div class="modal-form-group">
+          <label class="modal-label">您的昵称</label>
+          <Input 
+            v-model="playerName" 
+            placeholder="请输入昵称"
+            :disabled="loading"
+          />
+        </div>
+        <div class="modal-form-group">
+          <label class="modal-label">房间号</label>
+          <Input 
+            v-model="roomCode" 
+            placeholder="请输入6位房间号" 
+            maxlength="6"
+            :disabled="loading"
+          />
+        </div>
+        <div class="modal-actions">
+          <Button variant="default" @click="closeJoinModal">取消</Button>
+          <Button variant="primary" @click="handleJoinConfirm" :disabled="loading">
+            加入房间
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    <Toast ref="toastRef" />
   </div>
 </template>
 
@@ -810,5 +824,72 @@ export default {
 
 .list-move {
   transition: transform 0.3s ease;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.modal-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 14px;
+}
+
+.modal-info-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.modal-info p {
+  font-size: 15px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.modal-info strong {
+  color: #007AFF;
+}
+
+.modal-hint {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  text-align: center;
+  margin: 0;
+  padding: 0 8px;
+}
+
+.modal-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.modal-actions button {
+  flex: 1;
 }
 </style>

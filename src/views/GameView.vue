@@ -32,9 +32,7 @@ const {
   setVotes, setCandidates, reset
 } = useGame();
 
-const showToast = ref(false);
-const toastMessage = ref('');
-const toastType = ref('info');
+const toastRef = ref(null);
 
 const showCorrectModal = ref(false);
 const correctPlayerName = ref('');
@@ -43,6 +41,8 @@ const newHost = ref(null);
 
 const answer = ref('');
 const answerError = ref('');
+
+const hostInputWord = ref('');
 
 const drawingColor = ref('#000000');
 const drawingWidth = ref(4);
@@ -56,9 +56,7 @@ let voteTimer = null;
 const canvasRef = ref(null);
 
 const showNotification = (message, type = 'info') => {
-  toastMessage.value = message;
-  toastType.value = type;
-  showToast.value = true;
+  toastRef.value?.addToast(message, type);
 };
 
 const submitAnswer = () => {
@@ -71,7 +69,11 @@ const submitAnswer = () => {
 };
 
 const startGame = () => {
-  socketEmit('start-game', { roomCode: roomCode.value });
+  if (!hostInputWord.value.trim()) {
+    showNotification('请输入猜题目标', 'warning');
+    return;
+  }
+  socketEmit('start-game', { roomCode: roomCode.value, targetWord: hostInputWord.value });
 };
 
 const endGame = () => {
@@ -80,6 +82,14 @@ const endGame = () => {
 
 const startVote = () => {
   socketEmit('start-vote', { roomCode: roomCode.value });
+};
+
+const handleVoteClick = () => {
+  if (players.value.length <= 1) {
+    showNotification('目前房间人数不够，至少两人才能投票哦 😊', 'warning');
+    return;
+  }
+  startVote();
 };
 
 const vote = (candidateId) => {
@@ -91,6 +101,7 @@ const handleCorrectAnswer = (data) => {
   targetWord.value = data.targetWord;
   showCorrectModal.value = true;
   updateGameStatus('waiting');
+  hostInputWord.value = '';
 };
 
 const handleVoteStarted = (data) => {
@@ -212,6 +223,7 @@ const setupSocketListeners = () => {
 
   socketOn('game-ended', () => {
     updateGameStatus('waiting');
+    hostInputWord.value = '';
     showNotification('游戏结束', 'info');
   });
 
@@ -242,7 +254,7 @@ const init = (options) => {
     
     if (options.createRoom) {
       playerName = options.playerName;
-      socketEmit('create-room', { hostName: options.playerName, targetWord: options.targetWord });
+      socketEmit('create-room', { hostName: options.playerName });
     } else {
       playerName = options.playerName;
       socketEmit('join-room', { roomCode: options.roomCode, playerName: options.playerName });
@@ -303,6 +315,15 @@ defineExpose({ init });
         </div>
       </div>
       <div class="header-right">
+        <button 
+          v-if="isHost && gameStatus === 'playing'" 
+          class="header-stop-btn" 
+          @click="endGame"
+          title="停止游戏"
+        >
+          <Square :size="18" />
+          <span class="header-stop-tooltip">停止游戏</span>
+        </button>
         <span class="status-badge" :class="gameStatus">
           {{ gameStatus === 'waiting' ? '等待中' : gameStatus === 'playing' ? '绘画中' : '投票中' }}
         </span>
@@ -347,19 +368,28 @@ defineExpose({ init });
           @clear="clearCanvas"
         />
 
-        <div v-if="isHost" class="game-controls">
-          <Button v-if="gameStatus === 'waiting'" variant="success" @click="startGame">
+        <div v-if="isHost && gameStatus === 'waiting'" class="game-controls">
+          <input
+            v-model="hostInputWord"
+            type="text"
+            placeholder="输入本轮猜题目标"
+            class="host-word-input"
+          />
+          <button 
+            class="host-btn host-btn--success" 
+            @click="startGame"
+          >
             <Play :size="18" />
-            开始游戏
-          </Button>
-          <Button v-if="gameStatus === 'playing'" variant="warning" @click="endGame">
-            <Square :size="18" />
-            结束游戏
-          </Button>
-          <Button v-if="gameStatus === 'waiting' && players.length > 1" variant="primary" @click="startVote">
+            <span>开始</span>
+          </button>
+          <button 
+            class="host-btn host-btn--vote" 
+            :class="players.length > 1 ? '' : 'host-btn--disabled'"
+            @click="handleVoteClick"
+          >
             <Vote :size="18" />
-            发起投票
-          </Button>
+            <span>投票</span>
+          </button>
         </div>
       </section>
 
@@ -405,7 +435,7 @@ defineExpose({ init });
       </div>
     </Modal>
 
-    <Toast v-model:show="showToast" :message="toastMessage" :type="toastType" />
+    <Toast ref="toastRef" />
   </div>
 </template>
 
@@ -515,6 +545,51 @@ defineExpose({ init });
   color: white;
 }
 
+.header-stop-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.header-stop-btn:hover {
+  background: linear-gradient(135deg, #FF3B30, #FF2D55);
+  color: white;
+  transform: scale(1.1);
+}
+
+.header-stop-tooltip {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.header-stop-btn:hover .header-stop-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 .game-content {
   display: flex;
   flex: 1;
@@ -534,8 +609,147 @@ defineExpose({ init });
 
 .game-controls {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  align-items: stretch;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  max-width: 700px;
+  width: 100%;
+}
+
+.host-word-input {
+  flex: 2;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  border: 2px solid var(--separator);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.25s ease;
+  text-align: center;
+  letter-spacing: 0.5px;
+  min-width: 0;
+}
+
+.host-word-input::placeholder {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.host-word-input:focus {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+}
+
+.host-btn {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  overflow: hidden;
+  flex: 1;;
+  flex: 1;
+}
+
+.host-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.host-btn:hover {
+  transform: translateY(-1px);
+}
+
+.host-btn:hover::before {
+  opacity: 1;
+}
+
+.host-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.host-btn--success {
+  background: linear-gradient(135deg, #34C759 0%, #30D158 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
+}
+
+.host-btn--success:hover {
+  box-shadow: 0 6px 20px rgba(52, 199, 89, 0.4);
+}
+
+.host-btn--vote {
+  background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.host-btn--vote:hover {
+  box-shadow: 0 6px 20px rgba(0, 122, 255, 0.4);
+}
+
+.host-btn--warning {
+  background: linear-gradient(135deg, #FF9500 0%, #FF6B00 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.3);
+}
+
+.host-btn--warning:hover {
+  box-shadow: 0 6px 20px rgba(255, 149, 0, 0.4);
+}
+
+.host-btn--disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.host-btn--disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.host-btn--disabled::before {
+  display: none;
+}
+
+.host-playing-section .host-btn {
+  min-width: 160px;
+}
+
+@media (max-width: 600px) {
+  .host-input-with-actions {
+    flex-direction: column;
+  }
+  
+  .host-buttons {
+    width: 100%;
+  }
+  
+  .host-btn {
+    flex: 1;
+  }
 }
 
 .sidebar {

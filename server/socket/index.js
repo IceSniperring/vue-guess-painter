@@ -29,8 +29,8 @@ export function setupSocket(io) {
 
     socket.on('create-room', async (data) => {
       try {
-        const { targetWord, hostName } = data;
-        const room = await RoomService.createRoom(socket.id, hostName, targetWord);
+        const { hostName } = data;
+        const room = await RoomService.createRoom(socket.id, hostName, '');
         
         socket.join(room.room_code);
         rooms.set(room.room_code, { 
@@ -45,7 +45,7 @@ export function setupSocket(io) {
 
         socket.emit('room-created', {
           roomCode: room.room_code,
-          room: { ...room, targetWord }
+          room: { ...room, targetWord: '' }
         });
 
         io.emit('room-updated', {
@@ -126,7 +126,7 @@ export function setupSocket(io) {
 
     socket.on('start-game', async (data) => {
       try {
-        const { roomCode } = data;
+        const { roomCode, targetWord } = data;
         const roomData = rooms.get(roomCode);
         
         if (!roomData || roomData.host_id !== socket.id) {
@@ -134,6 +134,13 @@ export function setupSocket(io) {
           return;
         }
 
+        if (!targetWord || !targetWord.trim()) {
+          socket.emit('room-error', { message: '请输入猜题目标' });
+          return;
+        }
+
+        roomData.target_word = targetWord.trim();
+        await RoomService.updateTargetWord(roomData.id, roomData.target_word);
         await RoomService.updateRoomStatus(roomData.id, 'playing');
         roomData.status = 'playing';
         
@@ -153,7 +160,7 @@ export function setupSocket(io) {
           player_count: roomData.players?.length || 0
         });
 
-        console.log(`[Game] Started in room ${roomCode}`);
+        console.log(`[Game] Started in room ${roomCode} with word: ${roomData.target_word}`);
       } catch (error) {
         socket.emit('room-error', { message: error.message });
       }

@@ -1,121 +1,227 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, reactive, watch } from 'vue';
 
 const props = defineProps({
-  message: {
-    type: String,
-    default: ''
-  },
-  type: {
-    type: String,
-    default: 'info'
-  },
   duration: {
     type: Number,
     default: 3000
-  },
-  show: {
-    type: Boolean,
-    default: false
   }
 });
 
 const emit = defineEmits(['update:show']);
 
-let timer = null;
+const toasts = reactive([]);
+let toastId = 0;
 
-watch(() => props.show, (newVal) => {
-  if (newVal) {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      emit('update:show', false);
-    }, props.duration);
-  }
-});
-
-const handleClose = () => {
-  if (timer) clearTimeout(timer);
-  emit('update:show', false);
+const addToast = (message, type = 'info') => {
+  const id = ++toastId;
+  toasts.push({ id, message, type, show: true });
+  
+  setTimeout(() => {
+    removeToast(id);
+  }, props.duration);
 };
+
+const removeToast = (id) => {
+  const index = toasts.findIndex(t => t.id === id);
+  if (index > -1) {
+    toasts.splice(index, 1);
+  }
+};
+
+const handleClose = (id) => {
+  removeToast(id);
+};
+
+defineExpose({ addToast });
 </script>
 
 <template>
-  <Transition name="toast">
-    <div v-if="show" class="ios-toast" :class="`ios-toast--${type}`">
-      <span class="ios-toast-message">{{ message }}</span>
-      <button class="ios-toast-close" @click="handleClose">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </button>
+  <Teleport to="body">
+    <div class="toast-container">
+      <TransitionGroup name="toast">
+        <div 
+          v-for="toast in toasts" 
+          :key="toast.id" 
+          class="ios-toast" 
+          :class="`ios-toast--${toast.type}`"
+        >
+          <div class="toast-content">
+            <span class="toast-icon">
+              <svg v-if="toast.type === 'success'" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="10" fill="#34C759"/>
+                <path d="M6 10.5L8.5 13L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <svg v-else-if="toast.type === 'error'" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="10" fill="#FF3B30"/>
+                <path d="M7 7L13 13M13 7L7 13" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <svg v-else-if="toast.type === 'warning'" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="10" fill="#FF9500"/>
+                <path d="M10 6V11M10 14V14.5" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <svg v-else width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="10" fill="#007AFF"/>
+                <path d="M10 6V11M10 14V14.5" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <span class="ios-toast-message">{{ toast.message }}</span>
+          </div>
+          <button class="ios-toast-close" @click="handleClose(toast.id)">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </TransitionGroup>
     </div>
-  </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
-.ios-toast {
+.toast-container {
   position: fixed;
-  top: 60px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.ios-toast {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  box-shadow: var(--card-shadow);
-  z-index: 2000;
-  min-width: 280px;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-radius: 18px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  min-width: 300px;
   max-width: 90vw;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  pointer-events: auto;
 }
 
-.ios-toast--info {
-  border-left: 3px solid var(--accent);
+[data-theme="dark"] .ios-toast {
+  background: rgba(40, 40, 40, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.ios-toast--success {
-  border-left: 3px solid var(--accent-green);
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
 }
 
-.ios-toast--error {
-  border-left: 3px solid var(--accent-red);
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.ios-toast--warning {
-  border-left: 3px solid var(--accent-orange);
+.toast-icon svg {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+[data-theme="dark"] .toast-icon svg {
+  filter: none;
 }
 
 .ios-toast-message {
   flex: 1;
-  font-size: 14px;
-  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  color: #000;
+  line-height: 1.4;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"] .ios-toast-message {
+  color: #fff;
+  text-shadow: none;
+}
+
+.ios-toast--info .ios-toast-message {
+  color: #007AFF;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .ios-toast--info .ios-toast-message {
+  text-shadow: none;
+}
+
+.ios-toast--success .ios-toast-message {
+  color: #34C759;
+}
+
+.ios-toast--error .ios-toast-message {
+  color: #FF3B30;
+}
+
+.ios-toast--warning .ios-toast-message {
+  color: #FF9500;
 }
 
 .ios-toast-close {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--text-tertiary);
-  border-radius: 4px;
+  color: #8E8E93;
+  border-radius: 8px;
+  flex-shrink: 0;
+  transition: all 0.2s;
 }
 
 .ios-toast-close:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
 }
 
-.toast-enter-active,
+[data-theme="dark"] .ios-toast-close {
+  color: #8E8E93;
+}
+
+[data-theme="dark"] .ios-toast-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.toast-enter-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .toast-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.toast-enter-from,
+.toast-enter-from {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(-20px);
+  transform: translateX(40px);
+}
+
+.toast-move {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 </style>
